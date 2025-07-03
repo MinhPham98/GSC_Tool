@@ -1,0 +1,33 @@
+{
+  "update_url": "https://clients2.google.com/service/update2/crx",
+
+  "manifest_version": 3,
+  "name": "GSC Tool by APPNET",
+  "version": "1.0.0",
+  "description": "Tự động gửi yêu cầu xoá URL trên GSC.",
+  "author": "contact@appnet.com.vn",
+  "icons": {
+    "16": "img/logo-appnet-media1.png",
+    "32": "img/logo-appnet-media1.png",
+    "48": "img/logo-appnet-media1.png",
+    "128": "img/logo-appnet-media1.png"
+  },
+  "permissions": [
+    "storage",
+    "scripting",
+    "tabs"
+  ],
+  "action": {
+    "default_popup": "index.html",
+    "default_icon": {
+      "16": "img/logo-appnet-media1.png",
+      "32": "img/logo-appnet-media1.png"
+    }
+  },
+  "host_permissions": [
+    "https://search.google.com/search-console/removals*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  }
+}
