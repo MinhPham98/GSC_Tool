@@ -214,8 +214,8 @@ async function removeUrlJs(index, urlList, nextButton = false, submitButtonFound
 // ========== Hàm chính ==========
 async function linksResubmission() {
     try {
-        const { URLs, downloadCheckbox, temporaryRemoval: tempRemoval } = await new Promise((resolve, reject) => {
-            chrome.storage.sync.get(["URLs", "downloadCheckbox", "temporaryRemoval"], (data) => {
+        const { URLs, downloadCheckbox, temporaryRemoval: tempRemoval, backgroundQueueMode, currentQueueIndex } = await new Promise((resolve, reject) => {
+            chrome.storage.sync.get(["URLs", "downloadCheckbox", "temporaryRemoval", "backgroundQueueMode", "currentQueueIndex"], (data) => {
                 if (chrome.runtime.lastError) reject(chrome.runtime.lastError);
                 else resolve(data);
             });
@@ -229,6 +229,14 @@ async function linksResubmission() {
 
         const urlListTrimmed = URLs.map(element => element.trim()).filter(element => element.length > 2);
 
+        // ========== BACKGROUND QUEUE MODE ==========
+        if (backgroundQueueMode) {
+            console.log('Processing background queue URL:', urlListTrimmed[0]);
+            await processSingleUrlFromQueue(urlListTrimmed[0], currentQueueIndex);
+            return;
+        }
+
+        // ========== NORMAL PACK MODE ==========
         // Kiểm tra resume hay chạy mới
         chrome.storage.sync.get(['isPaused', 'pausedIndex'], (data) => {
             if (!data.isPaused && typeof data.pausedIndex === 'number') {
@@ -262,5 +270,100 @@ if (location.pathname === "/search-console/removals") {
 } else {
     alert("Hey người anh em, bấm OK đi bạn, vì bạn đang không ở link của GSC Removal:\nhttps://search.google.com/search-console/removals");
     window.location.replace("https://search.google.com/search-console/removals");
+}
+
+// ========== BACKGROUND QUEUE PROCESSING ==========
+async function processSingleUrlFromQueue(url, queueIndex) {
+    console.log(`Processing queue URL ${queueIndex + 1}: ${url}`);
+    
+    try {
+        // Thực hiện các bước xử lý URL như bình thường
+        await clickNextButton(false, temporaryRemoval);
+        await delay(1000);
+        
+        // Điền URL vào form
+        const urlBarLabelIndex = temporaryRemoval ? 0 : 1;
+        const urlBarLabel = document.querySelectorAll('.Ufn6O.PPB5Hf')[urlBarLabelIndex];
+        if (urlBarLabel) {
+            const urlBar = urlBarLabel.childNodes[0].childNodes[1];
+            if (urlBar) urlBar.value = url;
+        }
+        
+        await delay(1000);
+        await submissionNextButton();
+        await delay(1000);
+        
+        const submitButtonFound = await submitRequest(false);
+        await delay(2000);
+        
+        // Kiểm tra kết quả
+        let reason = "", status = "";
+        if (document.querySelectorAll('.PNenzf').length > 0) {
+            reason = "Trùng lặp URL"; 
+            status = "error";
+        } else if (!submitButtonFound) {
+            reason = "Lỗi gửi"; 
+            status = "error";
+        } else {
+            status = "success";
+        }
+        
+        // Lưu kết quả vào storage
+        const resultObj = { 
+            id: queueIndex + 1, 
+            url: url, 
+            status, 
+            reason,
+            timestamp: new Date().toISOString()
+        };
+        
+        chrome.storage.local.get(['queueResults'], (data) => {
+            const queueResults = data.queueResults || [];
+            queueResults.push(resultObj);
+            chrome.storage.local.set({ queueResults });
+        });
+        
+        // Đóng popup nếu có lỗi
+        if (status === "error") {
+            const closeButton = document.querySelectorAll('.CwaK9 .RveJvd.snByac');
+            for (let k = 0; k < closeButton.length; k++) {
+                if ((closeButton[k].childNodes[0] && (closeButton[k].childNodes[0].textContent).toLowerCase() == 'close')) {
+                    closeButton[k].click();
+                }
+            }
+        }
+        
+        console.log(`Queue URL ${queueIndex + 1} processed:`, status);
+        
+        // Thông báo cho background script
+        chrome.runtime.sendMessage({ 
+            type: "QUEUE_URL_PROCESSED",
+            result: resultObj
+        });
+        
+    } catch (error) {
+        console.error('Error processing queue URL:', error);
+        
+        // Lưu lỗi
+        const errorResult = {
+            id: queueIndex + 1,
+            url: url,
+            status: "error",
+            reason: "Processing error: " + error.message,
+            timestamp: new Date().toISOString()
+        };
+        
+        chrome.storage.local.get(['queueResults'], (data) => {
+            const queueResults = data.queueResults || [];
+            queueResults.push(errorResult);
+            chrome.storage.local.set({ queueResults });
+        });
+        
+        // Vẫn thông báo hoàn thành để tiếp tục queue
+        chrome.runtime.sendMessage({ 
+            type: "QUEUE_URL_PROCESSED",
+            result: errorResult
+        });
+    }
 }
 

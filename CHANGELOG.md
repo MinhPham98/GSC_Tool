@@ -2,6 +2,33 @@
 
 Tất cả các thay đổi quan trọng của dự án này sẽ được ghi lại trong file này.
 
+## [1.1.0] - 2025-07-10
+
+### 🚀 New Features
+- **🔄 Background Queue Processing:** Tính năng chạy ngầm hoàn toàn mới
+  - Xử lý URLs ngay cả khi đóng popup
+  - Queue tự động khôi phục sau browser restart
+  - Thanh progress real-time và điều khiển queue (pause/resume/stop)
+  - Export kết quả queue riêng biệt
+
+### ✨ Enhanced
+- **Improved UI:** Thêm section Background Queue với controls chuyên dụng
+- **Better Storage:** Phân tách storage cho pack mode và queue mode
+- **Enhanced Error Handling:** Xử lý lỗi tốt hơn cho background processing
+- **Auto Recovery:** Tự động khôi phục queue state khi mở lại popup
+
+### 🔧 Technical Changes
+- **New Background Functions:**
+  - `startQueueProcessing()` - Xử lý queue tuần tự
+  - `processNextUrl()` - Chuyển URL tiếp theo
+  - `processSingleUrlFromQueue()` - Xử lý từng URL riêng lẻ
+- **Enhanced Storage Management:** Riêng biệt cache cho queue và pack modes
+- **Improved Service Worker:** Background script persistence tốt hơn
+
+### 📝 Documentation
+- **Updated README:** Hướng dẫn chi tiết Background Queue mode
+- **Enhanced Comments:** Code comments đầy đủ cho maintainability
+
 ## [1.0.1] - 2025-07-10
 
 ### 🔧 Fixed

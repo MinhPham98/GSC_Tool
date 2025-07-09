@@ -4,6 +4,17 @@ const startBtn = document.getElementById("startBtn");
 const pauseBtn = document.getElementById("pauseBtn");
 const stopBtn = document.getElementById("stopBtn");
 
+// ========== BACKGROUND QUEUE ELEMENTS ==========
+const backgroundModeCheckbox = document.getElementById('backgroundModeCheckbox');
+const queueStatusDiv = document.getElementById('queue-status');
+const pauseQueueBtn = document.getElementById('pauseQueueBtn');
+const resumeQueueBtn = document.getElementById('resumeQueueBtn');
+const stopQueueBtn = document.getElementById('stopQueueBtn');
+const downloadQueueBtn = document.getElementById('downloadQueueBtn');
+const queueProgressFill = document.getElementById('queueProgressFill');
+const queueProgress = document.getElementById('queueProgress');
+const queueStatus = document.getElementById('queueStatus');
+
 let temporaryRemoval = true;
 let chunkSize = parseInt(document.getElementById('chunkSize')?.value || 10, 10);
 let urlChunks = [];
@@ -13,6 +24,10 @@ let isPaused = false;
 let sentPackCount = 0;
 let sentUrlCount = 0;
 let isFileInput = false;
+
+// ========== BACKGROUND QUEUE VARIABLES ==========
+let backgroundQueueActive = false;
+let queueUpdateInterval = null;
 
 /**
  * Chia mảng thành các pack nhỏ theo chunkSize
@@ -352,6 +367,14 @@ chrome.runtime.onMessage.addListener(async function(msg, sender, sendResponse) {
       notifyDoneAll();
     }
   }
+
+  // Xử lý các thông điệp liên quan đến background queue
+  if (msg.type === "QUEUE_COMPLETED") {
+    backgroundQueueActive = false;
+    updateQueueUI();
+    clearInterval(queueUpdateInterval);
+    showMessage(`🎉 Background queue hoàn thành! Đã xử lý ${msg.totalProcessed} URLs.`, 'success');
+  }
 });
 
 // ===== Sự kiện chuyển pack =====
@@ -511,10 +534,253 @@ document.getElementById('downloadBtn').addEventListener('click', function() {
   });
 });
 
-// ===== Debug log (có thể bỏ nếu không cần)
-console.log('links:', links);
-console.log('urlChunks:', urlChunks);
-console.log('currentPack:', currentPack, 'URLs:', URLs);
+// ========== BACKGROUND QUEUE FUNCTIONS ==========
+
+/**
+ * Bắt đầu background queue processing
+ */
+async function startBackgroundQueue(urls) {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    
+    if (!tab.url.includes('search.google.com/search-console/removals')) {
+      alert('Vui lòng mở trang Google Search Console Removals trước!');
+      return;
+    }
+    
+    // Gửi URLs đến background script
+    chrome.runtime.sendMessage({
+      type: "START_BACKGROUND_QUEUE",
+      urls: urls,
+      tabId: tab.id
+    });
+    
+    backgroundQueueActive = true;
+    updateQueueUI();
+    startQueueStatusUpdates();
+    
+    // Hiển thị queue status và ẩn UI thường
+    queueStatusDiv.style.display = 'block';
+    downloadQueueBtn.style.display = 'inline-block';
+    
+    showMessage('✅ Background queue đã bắt đầu! Bạn có thể đóng popup.', 'success');
+    
+  } catch (error) {
+    console.error('Error starting background queue:', error);
+    showMessage('❌ Lỗi khi bắt đầu background queue: ' + error.message, 'error');
+  }
+}
+
+/**
+ * Cập nhật UI queue controls
+ */
+function updateQueueUI() {
+  if (backgroundQueueActive) {
+    backgroundModeCheckbox.disabled = true;
+    startBtn.disabled = true;
+  } else {
+    backgroundModeCheckbox.disabled = false;
+    startBtn.disabled = false;
+    queueStatusDiv.style.display = 'none';
+    downloadQueueBtn.style.display = 'none';
+  }
+}
+
+/**
+ * Bắt đầu cập nhật trạng thái queue định kỳ
+ */
+function startQueueStatusUpdates() {
+  if (queueUpdateInterval) {
+    clearInterval(queueUpdateInterval);
+  }
+  
+  queueUpdateInterval = setInterval(async () => {
+    if (!backgroundQueueActive) {
+      clearInterval(queueUpdateInterval);
+      return;
+    }
+    
+    try {
+      chrome.runtime.sendMessage({ type: "GET_QUEUE_STATUS" }, (response) => {
+        if (response) {
+          updateQueueStatus(response);
+        }
+      });
+    } catch (error) {
+      console.error('Error getting queue status:', error);
+    }
+  }, 1000); // Cập nhật mỗi giây
+}
+
+/**
+ * Cập nhật hiển thị trạng thái queue
+ */
+function updateQueueStatus(status) {
+  const { currentUrlIndex, totalUrls, queueProcessing, queuePaused } = status;
+  
+  // Cập nhật progress bar
+  const progressPercent = totalUrls > 0 ? (currentUrlIndex / totalUrls) * 100 : 0;
+  queueProgressFill.style.width = progressPercent + '%';
+  
+  // Cập nhật text
+  queueProgress.textContent = `${currentUrlIndex}/${totalUrls}`;
+  
+  // Cập nhật trạng thái
+  if (!queueProcessing) {
+    queueStatus.textContent = 'Hoàn thành';
+    queueStatusDiv.className = 'queue-status queue-status--completed';
+  } else if (queuePaused) {
+    queueStatus.textContent = 'Đã tạm dừng';
+    queueStatusDiv.className = 'queue-status queue-status--paused';
+    pauseQueueBtn.style.display = 'none';
+    resumeQueueBtn.style.display = 'inline-block';
+  } else {
+    queueStatus.textContent = 'Đang xử lý...';
+    queueStatusDiv.className = 'queue-status queue-status--processing';
+    pauseQueueBtn.style.display = 'inline-block';
+    resumeQueueBtn.style.display = 'none';
+  }
+}
+
+/**
+ * Tải kết quả background queue
+ */
+function downloadQueueResults() {
+  chrome.storage.local.get(['queueResults'], function(data) {
+    const queueResults = data.queueResults || [];
+    if (!queueResults.length) {
+      alert('Không có dữ liệu queue để tải!');
+      return;
+    }
+    
+    const header = 'STT,URL,Kết quả,Lý do,Thời gian\n';
+    const rows = queueResults.map(r =>
+      `${r.id},"${r.url}","${r.status}","${r.reason || ''}","${r.timestamp || ''}"`
+    ).join('\n');
+    const csvContent = header + rows;
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `queue_results_${new Date().toISOString().slice(0,10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  });
+}
+
+// ========== BACKGROUND QUEUE EVENT LISTENERS ==========
+
+// Background mode checkbox change
+backgroundModeCheckbox.addEventListener('change', function() {
+  const isChecked = this.checked;
+  
+  if (isChecked) {
+    // Ẩn các controls không cần thiết cho background mode
+    document.querySelector('.pack-navigation').style.display = 'none';
+    document.getElementById('autoRunCheckbox').checked = false;
+    document.getElementById('autoRunCheckbox').disabled = true;
+    chunkSizeInput.disabled = true;
+  } else {
+    // Hiện lại controls
+    document.querySelector('.pack-navigation').style.display = 'flex';
+    document.getElementById('autoRunCheckbox').disabled = false;
+    chunkSizeInput.disabled = false;
+  }
+});
+
+// Queue control buttons
+pauseQueueBtn.addEventListener('click', function() {
+  chrome.runtime.sendMessage({ type: "PAUSE_BACKGROUND_QUEUE" });
+  showMessage('⏸️ Background queue đã tạm dừng', 'info');
+});
+
+resumeQueueBtn.addEventListener('click', function() {
+  chrome.runtime.sendMessage({ type: "RESUME_BACKGROUND_QUEUE" });
+  showMessage('▶️ Background queue đã tiếp tục', 'info');
+});
+
+stopQueueBtn.addEventListener('click', function() {
+  if (confirm('Bạn có chắc muốn dừng background queue?')) {
+    chrome.runtime.sendMessage({ type: "STOP_BACKGROUND_QUEUE" });
+    backgroundQueueActive = false;
+    updateQueueUI();
+    clearInterval(queueUpdateInterval);
+    showMessage('🛑 Background queue đã dừng', 'info');
+  }
+});
+
+downloadQueueBtn.addEventListener('click', downloadQueueResults);
+
+// Listen for queue completion
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.type === "QUEUE_COMPLETED") {
+    backgroundQueueActive = false;
+    updateQueueUI();
+    clearInterval(queueUpdateInterval);
+    showMessage(`🎉 Background queue hoàn thành! Đã xử lý ${message.totalProcessed} URLs.`, 'success');
+  }
+});
+
+// ========== MODIFY START BUTTON FOR BACKGROUND MODE ==========
+// Cập nhật hàm start để hỗ trợ background queue
+const originalStartHandler = startBtn.onclick;
+startBtn.onclick = async function() {
+  const urls = getUrlsFromInput();
+  
+  if (!urls.length) {
+    alert('Vui lòng nhập ít nhất 1 URL!');
+    return;
+  }
+  
+  // Kiểm tra background mode
+  if (backgroundModeCheckbox.checked) {
+    await startBackgroundQueue(urls);
+  } else {
+    // Chạy mode thường
+    if (originalStartHandler) {
+      originalStartHandler.call(this);
+    }
+  }
+};
+
+/**
+ * Lấy URLs từ input (textarea hoặc file)
+ */
+function getUrlsFromInput() {
+  const linksTextarea = document.getElementById('links');
+  const linksText = linksTextarea.value.trim();
+  
+  if (!linksText) {
+    return [];
+  }
+  
+  return linksText.split('\n')
+    .map(url => url.trim())
+    .filter(url => url.length > 0);
+}
+
+// Khôi phục trạng thái queue khi mở popup
+document.addEventListener('DOMContentLoaded', async function() {
+  try {
+    chrome.runtime.sendMessage({ type: "GET_QUEUE_STATUS" }, (response) => {
+      if (response && response.backgroundMode && response.queueProcessing) {
+        backgroundQueueActive = true;
+        updateQueueUI();
+        startQueueStatusUpdates();
+        queueStatusDiv.style.display = 'block';
+        downloadQueueBtn.style.display = 'inline-block';
+        updateQueueStatus(response);
+      }
+    });
+  } catch (error) {
+    console.error('Error checking queue status on load:', error);
+  }
+});
+
+// ...existing code...
 
 
 

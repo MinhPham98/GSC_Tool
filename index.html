@@ -26,7 +26,13 @@
     <div class="form-group form-group--inline">
       <label class="form-group__label" for="autoRunCheckbox">Tự động chạy tất cả pack</label>
       <input class="form-group__checkbox" type="checkbox" id="autoRunCheckbox">
-
+    </div>
+    
+    <!-- ========== BACKGROUND QUEUE SECTION ========== -->
+    <div class="form-group form-group--inline background-queue-section">
+      <label class="form-group__label" for="backgroundModeCheckbox">🔄 Chạy ngầm (Background Queue)</label>
+      <input class="form-group__checkbox" type="checkbox" id="backgroundModeCheckbox">
+      <small class="form-group__helper-text">Tiếp tục xử lý ngay cả khi đóng popup</small>
     </div>
 
     <div class="form-group">
@@ -48,6 +54,30 @@
       </div>
       <div class="actions__row">
         <button id="downloadBtn" class="button button--download">Tải kết quả CSV</button>
+        <button id="downloadQueueBtn" class="button button--download" style="display:none;">Tải kết quả Queue</button>
+      </div>
+    </div>
+    
+    <!-- ========== BACKGROUND QUEUE STATUS ========== -->
+    <div id="queue-status" class="queue-status" style="display:none;">
+      <div class="queue-status__header">
+        <h4>🔄 Background Queue Status</h4>
+        <div class="queue-status__controls">
+          <button id="pauseQueueBtn" class="button button--small button--pause">Tạm dừng Queue</button>
+          <button id="resumeQueueBtn" class="button button--small button--start" style="display:none;">Tiếp tục Queue</button>
+          <button id="stopQueueBtn" class="button button--small button--stop">Dừng Queue</button>
+        </div>
+      </div>
+      <div class="queue-status__info">
+        <div class="queue-progress">
+          <div class="queue-progress__bar">
+            <div id="queueProgressFill" class="queue-progress__fill"></div>
+          </div>
+          <div class="queue-progress__text">
+            <span id="queueProgress">0/0</span> URLs - 
+            <span id="queueStatus">Đang chờ...</span>
+          </div>
+        </div>
       </div>
     </div>
     <div id="progress-container" class="progress" style="display:none;">
