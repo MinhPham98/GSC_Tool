@@ -18,7 +18,7 @@ let logStartTime = Date.now();
 let logCounter = 0;
 let serviceWorkerStartTime = Date.now();
 
-// Hàm log cải tiến với timestamp và persistence
+// Hàm log cải tiến với timestamp và structured data serialization
 function log(level, message, ...args) {
     logCounter++;
     const now = Date.now();
@@ -27,24 +27,40 @@ function log(level, message, ...args) {
     
     const prefix = `[${timestamp}] [SW:${uptime}s] [${logCounter}] [${level}]`;
     
+    // Serialize objects to JSON for better visibility
+    const serializedArgs = args.map(arg => {
+        if (typeof arg === 'object' && arg !== null) {
+            try {
+                return JSON.stringify(arg, null, 2);
+            } catch (e) {
+                return String(arg);
+            }
+        }
+        return arg;
+    });
+    
+    const logMessage = serializedArgs.length > 0 
+        ? `${message} ${serializedArgs.join(' ')}`
+        : message;
+    
     switch(level) {
         case 'INFO':
-            console.log(`🔵 ${prefix}`, message, ...args);
+            console.log(`🔵 ${prefix} ${logMessage}`);
             break;
         case 'WARN':
-            console.warn(`🟡 ${prefix}`, message, ...args);
+            console.warn(`🟡 ${prefix} ${logMessage}`);
             break;
         case 'ERROR':
-            console.error(`🔴 ${prefix}`, message, ...args);
+            console.error(`🔴 ${prefix} ${logMessage}`);
             break;
         case 'DEBUG':
-            console.log(`🔧 ${prefix}`, message, ...args);
+            console.log(`🔧 ${prefix} ${logMessage}`);
             break;
         case 'QUEUE':
-            console.log(`🚀 ${prefix}`, message, ...args);
+            console.log(`🚀 ${prefix} ${logMessage}`);
             break;
         default:
-            console.log(`⚪ ${prefix}`, message, ...args);
+            console.log(`⚪ ${prefix} ${logMessage}`);
     }
 }
 
@@ -89,6 +105,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             queuePaused = false;
             targetTabId = msg.tabId;
             
+            log('QUEUE', '🚀 Background queue started with full URL list:', {
+                totalUrls: urlQueue.length,
+                tabId: targetTabId,
+                firstUrl: urlQueue[0] || 'none',
+                lastUrl: urlQueue[urlQueue.length - 1] || 'none',
+                allUrls: urlQueue.length <= 20 ? urlQueue : [...urlQueue.slice(0, 10), '...', ...urlQueue.slice(-10)]
+            });
+            
             // Lưu queue vào storage
             await chrome.storage.local.set({
                 urlQueue: urlQueue,
@@ -99,11 +123,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                 targetTabId: targetTabId
             });
             
-            log('QUEUE', '🚀 Background queue started:', {
-                totalUrls: urlQueue.length,
-                tabId: targetTabId,
-                firstUrl: urlQueue[0] || 'none'
-            });
+            log('QUEUE', '� Queue state saved to storage');
             await startQueueProcessing();
         })();
         return true; // Keep message channel open
@@ -200,11 +220,20 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     
     // ========== BACKGROUND QUEUE RESPONSE ==========
     if (msg.type === "QUEUE_URL_PROCESSED") {
-        log('QUEUE', '✅ URL processed, moving to next:', {
-            current: currentUrlIndex + 1,
-            total: urlQueue.length
+        log('QUEUE', '✅ URL processed completely, moving to next:', {
+            currentCompleted: currentUrlIndex + 1,
+            total: urlQueue.length,
+            result: msg.result || 'no-result'
         });
-        processNextUrl();
+        
+        // Reset processing flag khi URL đã hoàn thành
+        isProcessingUrl = false;
+        
+        // Chờ một chút trước khi chuyển URL tiếp theo để tránh race condition
+        setTimeout(() => {
+            processNextUrl();
+        }, 1000);
+        
         return false;
     }
     
@@ -242,6 +271,8 @@ async function sendPack() {
 }
 
 // ========== BACKGROUND QUEUE FUNCTIONS ==========
+let isProcessingUrl = false; // Flag để prevent double processing
+
 async function startQueueProcessing() {
     if (!backgroundMode || !queueProcessing || queuePaused || currentUrlIndex >= urlQueue.length) {
         log('DEBUG', '🚫 Queue processing skipped:', {
@@ -251,23 +282,58 @@ async function startQueueProcessing() {
         return;
     }
     
+    // Prevent double processing
+    if (isProcessingUrl) {
+        log('WARN', '⚠️ Already processing URL, skipping duplicate call');
+        return;
+    }
+    
+    isProcessingUrl = true;
+    
     const urlToProcess = urlQueue[currentUrlIndex];
+    const queueIndexKey = `queue_${currentUrlIndex}_${urlToProcess}`;
+    
+    // Double check: kiểm tra xem URL này đã được xử lý chưa
+    try {
+        const data = await chrome.storage.local.get(['queueResults']);
+        const queueResults = data.queueResults || [];
+        const alreadyProcessed = queueResults.find(r => 
+            r.url === urlToProcess && r.queueIndex === currentUrlIndex + 1
+        );
+        
+        if (alreadyProcessed) {
+            log('WARN', '⚠️ URL already processed, moving to next:', {
+                url: urlToProcess,
+                queueIndex: currentUrlIndex + 1,
+                existingResult: alreadyProcessed
+            });
+            isProcessingUrl = false;
+            await processNextUrl();
+            return;
+        }
+    } catch (error) {
+        log('ERROR', '❌ Error checking existing results:', error);
+    }
+    
     log('QUEUE', '🔄 Processing URL:', {
         index: currentUrlIndex + 1,
         total: urlQueue.length,
         url: urlToProcess,
-        remaining: urlQueue.length - currentUrlIndex - 1
+        remaining: urlQueue.length - currentUrlIndex - 1,
+        queueKey: queueIndexKey
     });
     
     try {
         // Kiểm tra tab còn tồn tại
         await chrome.tabs.get(targetTabId);
         
-        // Gửi URL hiện tại để xử lý
+        // Gửi URL hiện tại để xử lý với unique identifier
         await chrome.storage.sync.set({ 
             URLs: [urlToProcess],
             backgroundQueueMode: true,
-            currentQueueIndex: currentUrlIndex
+            currentQueueIndex: currentUrlIndex,
+            queueProcessingKey: queueIndexKey,
+            timestamp: Date.now()
         });
         
         // Inject script để xử lý
@@ -276,7 +342,11 @@ async function startQueueProcessing() {
             files: ["url.js"]
         });
         
-        log('QUEUE', '✅ url.js injected for queue URL:', urlToProcess);
+        log('QUEUE', '✅ url.js injected for queue URL:', {
+            url: urlToProcess,
+            queueIndex: currentUrlIndex + 1,
+            key: queueIndexKey
+        });
         
     } catch (error) {
         log('ERROR', '❌ Error processing queue URL:', {
@@ -284,25 +354,28 @@ async function startQueueProcessing() {
             url: urlToProcess,
             index: currentUrlIndex
         });
+        
+        // Reset flag on error
+        isProcessingUrl = false;
+        
         // Tab có thể đã đóng, tạm dừng queue
         await pauseQueueProcessing();
     }
 }
 
 async function processNextUrl() {
-    currentUrlIndex++;
-    
-    // Cập nhật storage
-    await chrome.storage.local.set({ 
-        currentUrlIndex: currentUrlIndex 
-    });
+    const completedUrlIndex = currentUrlIndex; // URL vừa hoàn thành (chưa tăng index)
     
     log('QUEUE', '➡️ Moving to next URL:', {
-        newIndex: currentUrlIndex,
+        completedIndex: completedUrlIndex + 1,
+        nextIndex: completedUrlIndex + 2,
         total: urlQueue.length,
-        completed: currentUrlIndex,
-        remaining: urlQueue.length - currentUrlIndex
+        completed: completedUrlIndex + 1,
+        remaining: urlQueue.length - (completedUrlIndex + 1)
     });
+    
+    // Tăng index CHÍNH XÁC sau khi URL hiện tại đã hoàn thành
+    currentUrlIndex++;
     
     if (currentUrlIndex >= urlQueue.length) {
         // Hoàn thành queue
@@ -313,14 +386,28 @@ async function processNextUrl() {
         await stopQueueProcessing();
         
         // Thông báo hoàn thành
-        chrome.runtime.sendMessage({ 
-            type: "QUEUE_COMPLETED",
-            totalProcessed: urlQueue.length 
-        });
+        try {
+            chrome.runtime.sendMessage({ 
+                type: "QUEUE_COMPLETED",
+                totalProcessed: urlQueue.length 
+            });
+        } catch (error) {
+            log('ERROR', '❌ Error sending completion message:', error);
+        }
     } else {
-        // Tiếp tục URL tiếp theo
+        // Cập nhật storage với index mới
+        await chrome.storage.local.set({ 
+            currentUrlIndex: currentUrlIndex 
+        });
+        
+        // Tiếp tục URL tiếp theo với delay để tránh quá nhanh
         if (!queuePaused && queueProcessing) {
-            await startQueueProcessing();
+            log('QUEUE', '⏳ Waiting 2 seconds before processing next URL...');
+            setTimeout(async () => {
+                await startQueueProcessing();
+            }, 2000);
+        } else {
+            log('QUEUE', '⏸️ Queue paused or stopped, not processing next URL');
         }
     }
 }

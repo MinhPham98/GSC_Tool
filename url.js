@@ -5,6 +5,48 @@ if (typeof isPaused === 'undefined') var isPaused = false;
 if (typeof resumeRequested === 'undefined') var resumeRequested = false;
 if (typeof isStopped === 'undefined') var isStopped = false;
 
+// ========== Hàm log cải tiến ==========
+function log(level, message, ...args) {
+    const timestamp = new Date().toLocaleTimeString();
+    const prefix = `[${timestamp}] [CONTENT] [${level}]`;
+    
+    // Serialize objects to JSON for better visibility
+    const serializedArgs = args.map(arg => {
+        if (typeof arg === 'object' && arg !== null) {
+            try {
+                return JSON.stringify(arg, null, 2);
+            } catch (e) {
+                return String(arg);
+            }
+        }
+        return arg;
+    });
+    
+    const logMessage = serializedArgs.length > 0 
+        ? `${message} ${serializedArgs.join(' ')}`
+        : message;
+    
+    switch(level) {
+        case 'INFO':
+            console.log(`🔵 ${prefix} ${logMessage}`);
+            break;
+        case 'WARN':
+            console.warn(`🟡 ${prefix} ${logMessage}`);
+            break;
+        case 'ERROR':
+            console.error(`🔴 ${prefix} ${logMessage}`);
+            break;
+        case 'DEBUG':
+            console.log(`🔧 ${prefix} ${logMessage}`);
+            break;
+        case 'QUEUE':
+            console.log(`🚀 ${prefix} ${logMessage}`);
+            break;
+        default:
+            console.log(`⚪ ${prefix} ${logMessage}`);
+    }
+}
+
 // ========== Lắng nghe thay đổi trạng thái ==========
 chrome.storage.sync.set({ isPaused: false, running: false, currentUrlIndex: null });
 
@@ -231,7 +273,23 @@ async function linksResubmission() {
 
         // ========== BACKGROUND QUEUE MODE ==========
         if (backgroundQueueMode) {
-            console.log('Processing background queue URL:', urlListTrimmed[0]);
+            log('QUEUE', 'Processing URL:', {
+                url: urlListTrimmed[0],
+                queueIndex: currentQueueIndex,
+                totalReceived: urlListTrimmed.length,
+                allUrlsReceived: urlListTrimmed
+            });
+            
+            // Validate rằng chúng ta có đúng URL cần xử lý
+            if (!urlListTrimmed[0]) {
+                log('ERROR', 'QUEUE ERROR: No URL to process!', {
+                    URLs: URLs,
+                    urlListTrimmed: urlListTrimmed,
+                    currentQueueIndex: currentQueueIndex
+                });
+                return;
+            }
+            
             await processSingleUrlFromQueue(urlListTrimmed[0], currentQueueIndex);
             return;
         }
@@ -274,10 +332,60 @@ if (location.pathname === "/search-console/removals") {
 
 // ========== BACKGROUND QUEUE PROCESSING ==========
 async function processSingleUrlFromQueue(url, queueIndex) {
-    console.log(`Processing queue URL ${queueIndex + 1}: ${url}`);
+    const startTime = Date.now();
+    // Create safe processing key using hash of URL + index
+    const urlHash = btoa(url).replace(/[^a-zA-Z0-9]/g, '').substring(0, 20);
+    const processingKey = `processing_${queueIndex}_${urlHash}`;
+    const globalLockKey = `queue_lock_${queueIndex}`;
+    
+    // ATOMIC LOCK: Check and set in one operation
+    if (window[processingKey] || window[globalLockKey]) {
+        log('WARN', `URL ${queueIndex + 1} already being processed, skipping duplicate:`, {
+            url: url,
+            processingKey: processingKey,
+            globalLockKey: globalLockKey
+        });
+        return;
+    }
+    
+    // Set BOTH locks immediately
+    window[processingKey] = true;
+    window[globalLockKey] = true;
+    
+    log('QUEUE', `Processing URL ${queueIndex + 1}:`, {
+        url: url,
+        startTime: new Date().toLocaleTimeString(),
+        processingKey: processingKey
+    });
+    
+    // Double check: Nếu URL này đã có trong queueResults thì có thể đã xử lý rồi
+    const existingResult = await new Promise((resolve) => {
+        chrome.storage.local.get(['queueResults'], (data) => {
+            const queueResults = data.queueResults || [];
+            const existing = queueResults.find(r => r.url === url && r.queueIndex === queueIndex + 1);
+            resolve(existing);
+        });
+    });
+    
+    if (existingResult) {
+        log('WARN', `URL ${queueIndex + 1} already processed (found in results), skipping:`, {
+            url: url,
+            existingResult: existingResult
+        });
+        delete window[processingKey];
+        delete window[globalLockKey];
+        return;
+    }
+    
+    // Additional safety: Set a unique timestamp lock
+    const timestampLock = `ts_${queueIndex}_${Date.now()}`;
+    window[timestampLock] = true;
+    
+    // Small delay to prevent race condition
+    await delay(100);
     
     try {
-        // Thực hiện các bước xử lý URL như bình thường
+        // Thực hiện các bước xử lý URL với timing tối ưu
         await clickNextButton(false, temporaryRemoval);
         await delay(1500);
         
@@ -286,7 +394,10 @@ async function processSingleUrlFromQueue(url, queueIndex) {
         const urlBarLabel = document.querySelectorAll('.Ufn6O.PPB5Hf')[urlBarLabelIndex];
         if (urlBarLabel) {
             const urlBar = urlBarLabel.childNodes[0].childNodes[1];
-            if (urlBar) urlBar.value = url;
+            if (urlBar) {
+                urlBar.value = url;
+                console.log(`📝 QUEUE: URL filled into form: ${url}`);
+            }
         }
         
         await delay(1500);
@@ -294,37 +405,129 @@ async function processSingleUrlFromQueue(url, queueIndex) {
         await delay(1500);
         
         const submitButtonFound = await submitRequest(false);
-        await delay(3000); // Tăng delay để đợi response từ server
+        await delay(3000);
         
         // Kiểm tra kết quả
         let reason = "", status = "";
         if (document.querySelectorAll('.PNenzf').length > 0) {
             reason = "Trùng lặp URL"; 
             status = "error";
+            log('DEBUG', `URL ${queueIndex + 1} - Duplicate`);
         } else if (!submitButtonFound) {
             reason = "Lỗi gửi"; 
             status = "error";
+            log('DEBUG', `URL ${queueIndex + 1} - Submit failed`);
         } else {
             status = "success";
+            log('DEBUG', `URL ${queueIndex + 1} - Success`);
         }
         
-        // Đợi thêm để đảm bảo request hoàn tất
         await delay(2000);
         
-        // Lưu kết quả vào storage
-        const resultObj = { 
-            id: queueIndex + 1, 
-            url: url, 
-            status, 
-            reason,
-            timestamp: new Date().toISOString()
-        };
-        
-        chrome.storage.local.get(['queueResults'], (data) => {
-            const queueResults = data.queueResults || [];
-            queueResults.push(resultObj);
-            chrome.storage.local.set({ queueResults });
+        log('DEBUG', `About to save result for URL ${queueIndex + 1}:`, {
+            url: url,
+            status: status,
+            reason: reason,
+            queueIndex: queueIndex + 1
         });
+        
+        // Lưu kết quả với ULTIMATE ATOMIC duplicate prevention
+        const atomicSave = await new Promise((resolve) => {
+            chrome.storage.local.get(['queueResults', 'queueProcessingLocks'], (data) => {
+                const queueResults = data.queueResults || [];
+                const locks = data.queueProcessingLocks || {};
+                
+                // Check processing lock trong storage
+                const lockKey = `${queueIndex}_${url}`;
+                if (locks[lockKey]) {
+                    console.warn(`⚠️ QUEUE: Storage lock detected for URL ${queueIndex + 1}, skipping save`);
+                    resolve(false);
+                    return;
+                }
+                
+                // Set storage lock
+                locks[lockKey] = { timestamp: Date.now(), processingKey };
+                
+                // Triple check cho duplicate: URL + queueIndex combination
+                const existingIndex = queueResults.findIndex(r => 
+                    r.url === url && r.queueIndex === queueIndex + 1
+                );
+                
+                let resultObj;
+                if (existingIndex === -1) {
+                    // Tính toán STT dựa trên length hiện tại (đảm bảo tuần tự)
+                    const newId = queueResults.length + 1;
+                    resultObj = { 
+                        id: newId, 
+                        url, 
+                        status, 
+                        reason,
+                        queueIndex: queueIndex + 1,
+                        timestamp: new Date().toISOString(),
+                        processingKey: processingKey,  // Debug info
+                        lockKey: lockKey
+                    };
+                    queueResults.push(resultObj);
+                    log('INFO', `NEW result saved with STT ${newId} for queueIndex ${queueIndex + 1}:`, {
+                        url: url,
+                        stt: newId,
+                        queueIndex: queueIndex + 1,
+                        status: status,
+                        reason: reason
+                    });
+                    
+                    // Check for gap warning
+                    const gap = Math.abs(newId - (queueIndex + 1));
+                    if (gap > 5) {
+                        log('WARN', `QUEUE GAP WARNING:`, {
+                            stt: newId,
+                            queueIndex: queueIndex + 1,
+                            gap: gap
+                        });
+                    }
+                } else {
+                    // Update existing với same queueIndex (nếu có lỗi rồi retry)
+                    resultObj = queueResults[existingIndex];
+                    resultObj.status = status;
+                    resultObj.reason = reason;
+                    resultObj.timestamp = new Date().toISOString();
+                    resultObj.processingKey = processingKey;
+                    resultObj.lockKey = lockKey;
+                    log('INFO', `UPDATED existing result STT ${resultObj.id} for queueIndex ${queueIndex + 1}:`, {
+                        url: url,
+                        stt: resultObj.id,
+                        queueIndex: queueIndex + 1,
+                        status: status,
+                        reason: reason
+                    });
+                }
+                
+                // Clear lock after save
+                delete locks[lockKey];
+                
+                chrome.storage.local.set({ queueResults, queueProcessingLocks: locks }, () => {
+                    log('DEBUG', `Sending QUEUE_URL_PROCESSED message:`, {
+                        stt: resultObj.id,
+                        queueIndex: queueIndex + 1,
+                        url: url,
+                        status: status
+                    });
+                    chrome.runtime.sendMessage({ 
+                        type: "QUEUE_URL_PROCESSED",
+                        result: resultObj
+                    });
+                    resolve(true);
+                });
+            });
+        });
+        
+        if (!atomicSave) {
+            log('WARN', `Atomic save failed for URL ${queueIndex + 1}, URL already being processed by another instance`, {
+                url: url,
+                queueIndex: queueIndex + 1
+            });
+            return;
+        }
         
         // Đóng popup nếu có lỗi
         if (status === "error") {
@@ -332,42 +535,89 @@ async function processSingleUrlFromQueue(url, queueIndex) {
             for (let k = 0; k < closeButton.length; k++) {
                 if ((closeButton[k].childNodes[0] && (closeButton[k].childNodes[0].textContent).toLowerCase() == 'close')) {
                     closeButton[k].click();
-                    await delay(1000); // Đợi popup đóng hoàn toàn
+                    await delay(1500);
+                    log('DEBUG', `Error popup closed for URL ${queueIndex + 1}`);
                 }
             }
         }
         
-        console.log(`Queue URL ${queueIndex + 1} processed:`, status);
-        
-        // Thông báo cho background script - CHỈ SAU KHI HOÀN TẤT
-        chrome.runtime.sendMessage({ 
-            type: "QUEUE_URL_PROCESSED",
-            result: resultObj
+        const processingTime = Date.now() - startTime;
+        log('INFO', `URL ${queueIndex + 1} completed:`, {
+            url: url,
+            status: status,
+            processingTimeMs: processingTime,
+            endTime: new Date().toLocaleTimeString()
         });
         
     } catch (error) {
-        console.error('Error processing queue URL:', error);
-        
-        // Lưu lỗi
-        const errorResult = {
-            id: queueIndex + 1,
+        log('ERROR', `Error processing URL ${queueIndex + 1}:`, {
             url: url,
-            status: "error",
-            reason: "Processing error: " + error.message,
-            timestamp: new Date().toISOString()
-        };
+            error: error.message,
+            stack: error.stack
+        });
         
-        chrome.storage.local.get(['queueResults'], (data) => {
+        chrome.storage.local.get(['queueResults', 'queueProcessingLocks'], (data) => {
             const queueResults = data.queueResults || [];
-            queueResults.push(errorResult);
-            chrome.storage.local.set({ queueResults });
+            const locks = data.queueProcessingLocks || {};
+            
+            // Check processing lock trong storage
+            const lockKey = `${queueIndex}_${url}`;
+            if (locks[lockKey]) {
+                log('WARN', `Storage lock detected for error URL ${queueIndex + 1}, skipping save`, {
+                    url: url,
+                    lockKey: lockKey
+                });
+                return;
+            }
+            
+            // Set storage lock
+            locks[lockKey] = { timestamp: Date.now(), processingKey };
+            
+            // Triple check cho duplicate: URL + queueIndex combination
+            const existingIndex = queueResults.findIndex(r => 
+                r.url === url && r.queueIndex === queueIndex + 1
+            );
+            
+            let errorResult;
+            if (existingIndex === -1) {
+                const newId = queueResults.length + 1;
+                errorResult = {
+                    id: newId, 
+                    url, 
+                    status: "error",
+                    reason: "Processing error: " + error.message,
+                    queueIndex: queueIndex + 1,
+                    timestamp: new Date().toISOString(),
+                    processingKey: processingKey,  // Debug info
+                    lockKey: lockKey
+                };
+                queueResults.push(errorResult);
+                console.log(`💾 QUEUE: NEW error result saved with STT ${newId} for queueIndex ${queueIndex + 1}`);
+            } else {
+                errorResult = queueResults[existingIndex];
+                errorResult.status = "error";
+                errorResult.reason = "Processing error: " + error.message;
+                errorResult.timestamp = new Date().toISOString();
+                errorResult.processingKey = processingKey;
+                errorResult.lockKey = lockKey;
+                console.log(`🔄 QUEUE: UPDATED error result STT ${errorResult.id} for queueIndex ${queueIndex + 1}`);
+            }
+            
+            // Clear lock after save
+            delete locks[lockKey];
+            
+            chrome.storage.local.set({ queueResults, queueProcessingLocks: locks }, () => {
+                chrome.runtime.sendMessage({ 
+                    type: "QUEUE_URL_PROCESSED",
+                    result: errorResult
+                });
+            });
         });
-        
-        // Vẫn thông báo hoàn thành để tiếp tục queue
-        chrome.runtime.sendMessage({ 
-            type: "QUEUE_URL_PROCESSED",
-            result: errorResult
-        });
+    } finally {
+        // Clear ALL processing flags
+        delete window[processingKey];
+        delete window[globalLockKey];
+        delete window[timestampLock];
+        console.log(`🧹 QUEUE: Cleared ALL processing flags [${processingKey}] for queueIndex ${queueIndex + 1}: ${url}`);
     }
 }
-

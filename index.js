@@ -62,6 +62,11 @@ const queueTotalUrls = document.querySelector('.queue-total-urls');
 const queueSuccessUrls = document.querySelector('.queue-success-urls');
 const queueErrorUrls = document.querySelector('.queue-error-urls');
 
+// Đảm bảo download queue button ẩn mặc định khi load (sẽ được hiển thị khi cần)
+if (downloadQueueBtn) {
+    downloadQueueBtn.classList.add('hidden');
+}
+
 let temporaryRemoval = true;
 let chunkSize = parseInt(document.getElementById('chunkSize')?.value || 10, 10);
 let urlChunks = [];
@@ -436,11 +441,28 @@ chrome.runtime.onMessage.addListener(async function(msg, sender, sendResponse) {
 
   // Xử lý các thông điệp liên quan đến background queue
   if (msg.type === "QUEUE_COMPLETED") {
+    popupLog('INFO', '🎉 Queue completed message received:', {
+      totalProcessed: msg.totalProcessed
+    });
+    
     backgroundQueueActive = false;
     updateQueueUI();
     clearInterval(queueUpdateInterval);
     updateQueueInfoFromStorage(); // Cập nhật lần cuối khi hoàn thành
-    showMessage(`🎉 Background queue hoàn thành! Đã xử lý ${msg.totalProcessed} URLs.`, 'success');
+    
+    // Đảm bảo download queue button hiển thị
+    if (downloadQueueBtn) {
+        downloadQueueBtn.classList.remove('hidden');
+        downloadQueueBtn.style.display = 'block';
+    }
+    
+    // Cập nhật UI để hiển thị kết quả
+    const queueInfoContainer = document.querySelector('.queue-info-table-container');
+    if (queueInfoContainer) {
+      queueInfoContainer.classList.remove('hidden');
+    }
+    
+    showMessage(`🎉 Background queue hoàn thành! Đã xử lý ${msg.totalProcessed} URLs. Bạn có thể tải xuống kết quả bằng nút Download CSV.`, 'success');
   }
   
   // Listen for individual URL completion để update real-time
@@ -752,14 +774,30 @@ async function startBackgroundQueue(urls) {
             return;
         }
         
+        // Validate URLs trước khi gửi
+        if (!urls || urls.length === 0) {
+            alert('Không có URL nào để xử lý!');
+            return;
+        }
+        
+        popupLog('INFO', '🚀 Starting background queue with URLs:', {
+            count: urls.length,
+            first5: urls.slice(0, 5),
+            tabId: tab.id
+        });
+        
         // Reset queue results trước khi bắt đầu
         await chrome.storage.local.set({ queueResults: [] });
         
         // Cập nhật queue info table với số URLs ban đầu
-        console.log('📊 Updating queue info table with:', urls.length, 'URLs');
+        popupLog('INFO', '📊 Updating queue info table with:', urls.length, 'URLs');
         updateQueueInfoTable(urls.length, 0, 0);
         
-        console.log('📤 Sending START_BACKGROUND_QUEUE message to background...');
+        popupLog('INFO', '📤 Sending START_BACKGROUND_QUEUE message to background...', {
+            urlCount: urls.length,
+            tabId: tab.id
+        });
+        
         // Gửi URLs đến background script
         chrome.runtime.sendMessage({
             type: "START_BACKGROUND_QUEUE",
@@ -767,8 +805,12 @@ async function startBackgroundQueue(urls) {
             tabId: tab.id
         });
         
-        console.log('🔄 Setting backgroundQueueActive = true');
+        popupLog('INFO', '🔄 Setting backgroundQueueActive = true');
         backgroundQueueActive = true;
+        
+        // Track queue start time for ETA calculation
+        window.queueStartTime = Date.now();
+        
         updateQueueUI();
         
         // Đợi một chút cho UI update xong
@@ -776,16 +818,16 @@ async function startBackgroundQueue(urls) {
             startQueueStatusUpdates();
         }, 500);
         
-        // Hiển thị queue status và ẩn UI thường
+        // Hiển thị queue status và queue download button
         queueStatusDiv.classList.remove('hidden');
-        downloadQueueBtn.classList.remove('hidden');
+        if (downloadQueueBtn) downloadQueueBtn.classList.remove('hidden');
         
         showMessage(`✅ Background queue đã bắt đầu với ${urls.length} URLs! 
         Bạn có thể đóng popup, queue sẽ xử lý từng URL một cách tuần tự.
         Mỗi URL sẽ được xử lý hoàn toàn trước khi chuyển sang URL tiếp theo.`, 'success');
         
     } catch (error) {
-        console.error('Error starting background queue:', error);
+        popupLog('ERROR', '❌ Error starting background queue:', error);
         showMessage('❌ Lỗi khi bắt đầu background queue: ' + error.message, 'error');
     }
 }
@@ -829,6 +871,9 @@ function updateQueueUI() {
         const downloadBtn = document.getElementById('downloadBtn');
         if (downloadBtn) downloadBtn.classList.add('hidden');
         
+        // Show download queue button
+        if (downloadQueueBtn) downloadQueueBtn.classList.remove('hidden');
+        
         // Hide pack mode info table và show queue info table
         if (packInfoTable) packInfoTable.classList.add('hidden');
         if (queueInfoTable) queueInfoTable.classList.remove('hidden');
@@ -854,7 +899,7 @@ function updateQueueUI() {
         // Remove class để hiện lại UI
         bodyElement.classList.remove('queue-mode-active');
         
-        // Reset checkbox
+        // Reset checkbox - NHƯNG nếu queue vừa hoàn thành, giữ download button
         backgroundModeCheckbox.checked = false;
         // Hiện lại checkbox row
         const backgroundModeRow = backgroundModeCheckbox.closest('.form-group');
@@ -881,13 +926,40 @@ function updateQueueUI() {
         const downloadBtn = document.getElementById('downloadBtn');
         if (downloadBtn) downloadBtn.classList.remove('hidden');
         
-        // Show pack mode info table và hide queue info table
-        if (packInfoTable) packInfoTable.classList.remove('hidden');
-        if (queueInfoTable) queueInfoTable.classList.add('hidden');
+        // Hide download queue button (trừ khi có queue results)
+        if (downloadQueueBtn) downloadQueueBtn.classList.add('hidden');
         
-        // Hide queue UI
-        queueStatusDiv.classList.add('hidden');
-        downloadQueueBtn.classList.add('hidden');
+        // Show pack mode info table và hide queue info table - NHƯNG kiểm tra có kết quả queue không
+        chrome.storage.local.get(['queueResults'], (data) => {
+            const hasQueueResults = data.queueResults && data.queueResults.length > 0;
+            
+            if (hasQueueResults) {
+                // Giữ queue info table nếu có kết quả
+                popupLog('INFO', '📊 Keeping queue results visible:', {
+                    resultsCount: data.queueResults.length
+                });
+                if (queueInfoTable) queueInfoTable.classList.remove('hidden');
+                if (packInfoTable) packInfoTable.classList.add('hidden');
+                
+                // Giữ download queue button visible và ẩn download button thường
+                if (downloadQueueBtn) downloadQueueBtn.classList.remove('hidden');
+                queueStatusDiv.classList.add('hidden'); // Ẩn status vì đã hoàn thành
+                
+                // Ẩn main download button khi có queue results
+                const downloadBtn = document.getElementById('downloadBtn');
+                if (downloadBtn) downloadBtn.classList.add('hidden');
+            } else {
+                // Không có kết quả queue, chuyển về pack mode bình thường
+                if (packInfoTable) packInfoTable.classList.remove('hidden');
+                if (queueInfoTable) queueInfoTable.classList.add('hidden');
+                if (downloadQueueBtn) downloadQueueBtn.classList.add('hidden');
+                queueStatusDiv.classList.add('hidden');
+                
+                // Hiển thị lại download button thường
+                const downloadBtn = document.getElementById('downloadBtn');
+                if (downloadBtn) downloadBtn.classList.remove('hidden');
+            }
+        });
         
         // Reset textarea
         const linksTextarea = document.getElementById('links');
@@ -897,7 +969,7 @@ function updateQueueUI() {
             linksTextarea.style.background = '';
         }
         
-        console.log('📦 Pack mode UI activated');
+        popupLog('UI', '📦 Pack mode UI activated (with queue results check)');
     }
 }
 
@@ -943,7 +1015,7 @@ function startQueueStatusUpdates() {
 }
 
 /**
- * Cập nhật hiển thị trạng thái queue
+ * Cập nhật hiển thị trạng thái queue với ETA calculation
  */
 function updateQueueStatus(status) {
     if (!status) {
@@ -965,9 +1037,31 @@ function updateQueueStatus(status) {
         popupLog('ERROR', '❌ queueProgressFill element not found');
     }
     
-    // Cập nhật text hiển thị
+    // Calculate ETA and processing speed
+    let etaText = '';
+    if (queueProcessing && currentUrlIndex > 0) {
+        const queueStartTime = window.queueStartTime || Date.now();
+        const elapsed = (Date.now() - queueStartTime) / 1000; // seconds
+        const avgTimePerUrl = elapsed / currentUrlIndex;
+        const remainingUrls = totalUrls - currentUrlIndex;
+        const etaSeconds = remainingUrls * avgTimePerUrl;
+        
+        if (etaSeconds > 60) {
+            const etaMinutes = Math.round(etaSeconds / 60);
+            etaText = ` - ETA: ${etaMinutes}min`;
+        } else {
+            etaText = ` - ETA: ${Math.round(etaSeconds)}s`;
+        }
+        
+        const speed = currentUrlIndex / (elapsed / 60); // URLs per minute
+        if (speed > 0) {
+            etaText += ` (${speed.toFixed(1)} URLs/min)`;
+        }
+    }
+    
+    // Cập nhật text hiển thị với ETA
     if (queueProgress) {
-        queueProgress.textContent = `${currentUrlIndex}/${totalUrls}`;
+        queueProgress.textContent = `${currentUrlIndex}/${totalUrls}${etaText}`;
         popupLog('DEBUG', '✅ Progress text updated:', queueProgress.textContent);
     } else {
         popupLog('ERROR', '❌ queueProgress element not found');
@@ -992,7 +1086,7 @@ function updateQueueStatus(status) {
         resumeQueueBtn.classList.add('hidden');
     }
     
-    // Cập nhật header text
+    // Cập nhật header text với progress
     const queueHeader = queueStatusDiv.querySelector('h4');
     if (queueHeader) {
         queueHeader.textContent = `🔄 Background Queue (${currentUrlIndex}/${totalUrls})`;
@@ -1036,38 +1130,123 @@ backgroundModeCheckbox.addEventListener('change', function() {
   
   popupLog('UI', '🔄 Background mode toggled:', isChecked);
   
+  // Debug: Kiểm tra sự tồn tại của các elements
+  const downloadBtn = document.getElementById('downloadBtn');
+  const packNavigation = document.querySelector('.pack-navigation');
+  const autoRunCheckbox = document.getElementById('autoRunCheckbox');
+  
+  popupLog('DEBUG', '🔍 Elements check:', {
+    downloadBtn: !!downloadBtn,
+    downloadQueueBtn: !!downloadQueueBtn,
+    packNavigation: !!packNavigation,
+    packInfoTable: !!packInfoTable,
+    queueInfoTable: !!queueInfoTable,
+    autoRunCheckbox: !!autoRunCheckbox,
+    chunkSizeInput: !!chunkSizeInput
+  });
+  
   if (isChecked) {
-    // Ẩn các controls không cần thiết cho background mode
-    document.querySelector('.pack-navigation').classList.add('hidden');
-    document.getElementById('autoRunCheckbox').checked = false;
+    popupLog('UI', '📥 Switching to Queue Mode...');
     
-    // Ẩn hoàn toàn autoRun row thay vì disable
-    const autoRunRow = document.getElementById('autoRunCheckbox').closest('.form-group');
-    if (autoRunRow) autoRunRow.classList.add('hidden');
+    // Ẩn các controls không cần thiết cho background mode
+    if (packNavigation) {
+      packNavigation.classList.add('hidden');
+      popupLog('DEBUG', '✅ Pack navigation hidden');
+    }
+    
+    if (autoRunCheckbox) {
+      autoRunCheckbox.checked = false;
+      // Ẩn hoàn toàn autoRun row thay vì disable
+      const autoRunRow = autoRunCheckbox.closest('.form-group');
+      if (autoRunRow) {
+        autoRunRow.classList.add('hidden');
+        popupLog('DEBUG', '✅ Auto run row hidden');
+      }
+    }
     
     // Ẩn hoàn toàn chunk size row thay vì disable
-    const chunkRow = chunkSizeInput.closest('.form-group');
-    if (chunkRow) chunkRow.classList.add('hidden');
+    if (chunkSizeInput) {
+      const chunkRow = chunkSizeInput.closest('.form-group');
+      if (chunkRow) {
+        chunkRow.classList.add('hidden');
+        popupLog('DEBUG', '✅ Chunk size row hidden');
+      }
+    }
     
     // Toggle info tables
-    if (packInfoTable) packInfoTable.classList.add('hidden');
-    if (queueInfoTable) queueInfoTable.classList.remove('hidden');
-    resetQueueInfoTable(); // Reset về 0 khi chuyển mode
+    if (packInfoTable) {
+      packInfoTable.classList.add('hidden');
+      popupLog('DEBUG', '✅ Pack info table hidden');
+    }
+    if (queueInfoTable) {
+      queueInfoTable.classList.remove('hidden');
+      resetQueueInfoTable(); // Reset về 0 khi chuyển mode
+      popupLog('DEBUG', '✅ Queue info table shown');
+    }
+    
+    // Ẩn download button thường và hiện download queue button
+    if (downloadBtn) {
+      downloadBtn.classList.add('hidden');
+      popupLog('DEBUG', '✅ Download button hidden');
+    }
+    if (downloadQueueBtn) {
+      downloadQueueBtn.classList.remove('hidden');
+      popupLog('DEBUG', '✅ Download queue button shown');
+    }
+    
+    // Load ALL URLs vào textarea cho background queue mode
+    loadAllUrlsToTextarea();
+    
+    popupLog('UI', '📥 Switched to Queue download button');
+    
   } else {
+    popupLog('UI', '📥 Switching to Pack Mode...');
+    
     // Hiện lại controls
-    document.querySelector('.pack-navigation').classList.remove('hidden');
+    if (packNavigation) {
+      packNavigation.classList.remove('hidden');
+      popupLog('DEBUG', '✅ Pack navigation shown');
+    }
     
     // Hiện lại autoRun row
-    const autoRunRow = document.getElementById('autoRunCheckbox').closest('.form-group');
-    if (autoRunRow) autoRunRow.classList.remove('hidden');
+    if (autoRunCheckbox) {
+      const autoRunRow = autoRunCheckbox.closest('.form-group');
+      if (autoRunRow) {
+        autoRunRow.classList.remove('hidden');
+        popupLog('DEBUG', '✅ Auto run row shown');
+      }
+    }
     
     // Hiện lại chunk size row
-    const chunkRow = chunkSizeInput.closest('.form-group');
-    if (chunkRow) chunkRow.classList.remove('hidden');
+    if (chunkSizeInput) {
+      const chunkRow = chunkSizeInput.closest('.form-group');
+      if (chunkRow) {
+        chunkRow.classList.remove('hidden');
+        popupLog('DEBUG', '✅ Chunk size row shown');
+      }
+    }
     
     // Toggle info tables
-    if (packInfoTable) packInfoTable.classList.remove('hidden');
-    if (queueInfoTable) queueInfoTable.classList.add('hidden');
+    if (packInfoTable) {
+      packInfoTable.classList.remove('hidden');
+      popupLog('DEBUG', '✅ Pack info table shown');
+    }
+    if (queueInfoTable) {
+      queueInfoTable.classList.add('hidden');
+      popupLog('DEBUG', '✅ Queue info table hidden');
+    }
+    
+    // Hiện download button thường và ẩn download queue button
+    if (downloadBtn) {
+      downloadBtn.classList.remove('hidden');
+      popupLog('DEBUG', '✅ Download button shown');
+    }
+    if (downloadQueueBtn) {
+      downloadQueueBtn.classList.add('hidden');
+      popupLog('DEBUG', '✅ Download queue button hidden');
+    }
+    
+    popupLog('UI', '📥 Switched to Pack download button');
   }
 });
 
@@ -1100,11 +1279,28 @@ downloadQueueBtn.addEventListener('click', downloadQueueResults);
 // Listen for queue completion
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === "QUEUE_COMPLETED") {
+    popupLog('INFO', '🎉 Queue completion listener triggered:', {
+      totalProcessed: message.totalProcessed
+    });
+    
     backgroundQueueActive = false;
     updateQueueUI();
     clearInterval(queueUpdateInterval);
     updateQueueInfoFromStorage(); // Cập nhật lần cuối khi hoàn thành
-    showMessage(`🎉 Background queue hoàn thành! Đã xử lý ${message.totalProcessed} URLs.`, 'success');
+    
+    // Đảm bảo download queue button hiển thị
+    if (downloadQueueBtn) {
+        downloadQueueBtn.classList.remove('hidden');
+        downloadQueueBtn.style.display = 'block';
+    }
+    
+    // Cập nhật UI để hiển thị kết quả  
+    const queueInfoContainer = document.querySelector('.queue-info-table-container');
+    if (queueInfoContainer) {
+      queueInfoContainer.classList.remove('hidden');
+    }
+    
+    showMessage(`🎉 Background queue hoàn thành! Đã xử lý ${message.totalProcessed} URLs. Bạn có thể tải xuống kết quả bằng nút Download CSV.`, 'success');
   }
   
   // Listen for individual URL completion để update real-time
@@ -1117,12 +1313,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 // Cập nhật hàm start để hỗ trợ background queue
 const originalStartHandler = startBtn.onclick;
 startBtn.onclick = async function() {
-  const urls = getUrlsFromInput();
+  const urls = await getUrlsFromInput(); // Await cho trường hợp Promise
   
   if (!urls.length) {
     alert('Vui lòng nhập ít nhất 1 URL!');
     return;
   }
+  
+  popupLog('INFO', '🎯 Start clicked:', {
+    urlCount: urls.length,
+    backgroundMode: backgroundModeCheckbox.checked,
+    first5: urls.slice(0, 5)
+  });
   
   // Kiểm tra background mode
   if (backgroundModeCheckbox.checked) {
@@ -1137,18 +1339,50 @@ startBtn.onclick = async function() {
 
 /**
  * Lấy URLs từ input (textarea hoặc file)
+ * Đối với background mode: lấy ALL URLs từ storage nếu có
  */
 function getUrlsFromInput() {
   const linksTextarea = document.getElementById('links');
   const linksText = linksTextarea.value.trim();
   
+  popupLog('DEBUG', '📝 Reading URLs from input:', {
+    textLength: linksText.length,
+    isEmpty: !linksText,
+    backgroundMode: backgroundModeCheckbox.checked,
+    hasUrlChunks: urlChunks.length > 0
+  });
+  
+  // Nếu background mode và đang có urlChunks (đã chia pack), 
+  // thì lấy TẤT CẢ URLs từ storage thay vì chỉ pack hiện tại
+  if (backgroundModeCheckbox.checked && urlChunks.length > 0) {
+    return new Promise((resolve) => {
+      chrome.storage.local.get(['allUrls'], (data) => {
+        const allUrls = data.allUrls || [];
+        popupLog('DEBUG', '📝 Background mode: using ALL URLs from storage:', {
+          totalUrls: allUrls.length,
+          first5: allUrls.slice(0, 5),
+          last5: allUrls.slice(-5)
+        });
+        resolve(allUrls);
+      });
+    });
+  }
+  
   if (!linksText) {
     return [];
   }
   
-  return linksText.split('\n')
+  const urls = linksText.split('\n')
     .map(url => url.trim())
     .filter(url => url.length > 0);
+    
+  popupLog('DEBUG', '📝 URLs parsed from textarea:', {
+    totalUrls: urls.length,
+    first5: urls.slice(0, 5),
+    last5: urls.slice(-5)
+  });
+  
+  return urls;
 }
 
 /**
@@ -1211,6 +1445,28 @@ function showMessage(message, type = 'info') {
         
         popupLog('UI', '💬 Message shown:', { message, type });
     }
+}
+
+/**
+ * Load ALL URLs vào textarea cho background queue mode
+ */
+function loadAllUrlsToTextarea() {
+    // Nếu có urlChunks (đã chia pack), load từ storage
+    if (urlChunks.length > 0) {
+        chrome.storage.local.get(['allUrls'], (data) => {
+            const allUrls = data.allUrls || [];
+            if (allUrls.length > 0) {
+                const linksTextarea = document.getElementById('links');
+                linksTextarea.value = allUrls.join('\n');
+                
+                popupLog('UI', '📝 Loaded ALL URLs to textarea for queue mode:', {
+                    totalUrls: allUrls.length,
+                    fromPacks: urlChunks.reduce((sum, pack) => sum + pack.length, 0)
+                });
+            }
+        });
+    }
+    // Nếu chưa có pack nào, textarea giữ nguyên (user mới paste)
 }
 
 // ========== POPUP DEBUG OBJECT ==========
