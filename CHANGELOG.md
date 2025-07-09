@@ -2,6 +2,26 @@
 
 Tất cả các thay đổi quan trọng của dự án này sẽ được ghi lại trong file này.
 
+## [1.1.1] - 2025-07-10
+
+### 🐛 Bug Fixes
+- **🔧 Fixed Queue Timing Issue:** Loại bỏ fixed 2s delay, giờ queue đợi hoàn tất URL hiện tại trước khi xử lý URL tiếp theo
+- **🎨 Fixed UI Overlap Bug:** Khi mở popup trong queue mode, tự động ẩn tất cả pack mode controls
+- **⏱️ Improved Processing Timing:** Tăng delays trong quá trình xử lý để đảm bảo GSC response đầy đủ
+- **🧹 Better Error Handling:** Đợi popup đóng hoàn toàn trước khi tiếp tục queue
+
+### ✨ Enhanced UX
+- **🎯 Smart UI Mode Switching:** Popup tự động chuyển giữa Pack Mode và Queue Mode
+- **💬 Clearer Messages:** Thông báo rõ ràng hơn về queue behavior
+- **🎨 CSS Classes:** Thêm `.queue-mode-active` class để kiểm soát UI states
+- **📱 Responsive Queue UI:** Chỉ hiển thị controls cần thiết cho từng mode
+
+### 🔧 Technical Details
+- **Sequential Processing:** URLs được xử lý hoàn toàn tuần tự thay vì parallel
+- **Event-Driven Queue:** Queue tiếp tục dựa trên completion events thay vì timers
+- **UI State Management:** Proper show/hide của elements khi switch modes
+- **Storage Cleanup:** Reset queue results khi bắt đầu queue mới
+
 ## [1.1.0] - 2025-07-10
 
 ### 🚀 New Features

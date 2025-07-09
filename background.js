@@ -182,12 +182,11 @@ async function processNextUrl() {
             totalProcessed: urlQueue.length 
         });
     } else {
-        // Tiếp tục URL tiếp theo sau delay
-        setTimeout(() => {
-            if (!queuePaused && queueProcessing) {
-                startQueueProcessing();
-            }
-        }, 2000); // Delay 2s giữa các URL
+        // Tiếp tục URL tiếp theo - KHÔNG CÓ DELAY, CHỜ MESSAGE RESPONSE
+        console.log('Moving to next URL in queue...');
+        if (!queuePaused && queueProcessing) {
+            await startQueueProcessing();
+        }
     }
 }
 

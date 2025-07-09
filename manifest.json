@@ -3,7 +3,7 @@
 
   "manifest_version": 3,
   "name": "GSC Tool by APPNET",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Tự động gửi yêu cầu xoá URL trên GSC.",
   "author": "contact@appnet.com.vn",
   "icons": {

@@ -279,7 +279,7 @@ async function processSingleUrlFromQueue(url, queueIndex) {
     try {
         // Thực hiện các bước xử lý URL như bình thường
         await clickNextButton(false, temporaryRemoval);
-        await delay(1000);
+        await delay(1500);
         
         // Điền URL vào form
         const urlBarLabelIndex = temporaryRemoval ? 0 : 1;
@@ -289,12 +289,12 @@ async function processSingleUrlFromQueue(url, queueIndex) {
             if (urlBar) urlBar.value = url;
         }
         
-        await delay(1000);
+        await delay(1500);
         await submissionNextButton();
-        await delay(1000);
+        await delay(1500);
         
         const submitButtonFound = await submitRequest(false);
-        await delay(2000);
+        await delay(3000); // Tăng delay để đợi response từ server
         
         // Kiểm tra kết quả
         let reason = "", status = "";
@@ -307,6 +307,9 @@ async function processSingleUrlFromQueue(url, queueIndex) {
         } else {
             status = "success";
         }
+        
+        // Đợi thêm để đảm bảo request hoàn tất
+        await delay(2000);
         
         // Lưu kết quả vào storage
         const resultObj = { 
@@ -329,13 +332,14 @@ async function processSingleUrlFromQueue(url, queueIndex) {
             for (let k = 0; k < closeButton.length; k++) {
                 if ((closeButton[k].childNodes[0] && (closeButton[k].childNodes[0].textContent).toLowerCase() == 'close')) {
                     closeButton[k].click();
+                    await delay(1000); // Đợi popup đóng hoàn toàn
                 }
             }
         }
         
         console.log(`Queue URL ${queueIndex + 1} processed:`, status);
         
-        // Thông báo cho background script
+        // Thông báo cho background script - CHỈ SAU KHI HOÀN TẤT
         chrome.runtime.sendMessage({ 
             type: "QUEUE_URL_PROCESSED",
             result: resultObj

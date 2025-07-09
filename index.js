@@ -540,50 +540,126 @@ document.getElementById('downloadBtn').addEventListener('click', function() {
  * Bắt đầu background queue processing
  */
 async function startBackgroundQueue(urls) {
-  try {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    
-    if (!tab.url.includes('search.google.com/search-console/removals')) {
-      alert('Vui lòng mở trang Google Search Console Removals trước!');
-      return;
+    try {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        
+        if (!tab.url.includes('search.google.com/search-console/removals')) {
+            alert('Vui lòng mở trang Google Search Console Removals trước!');
+            return;
+        }
+        
+        // Reset queue results trước khi bắt đầu
+        await chrome.storage.local.set({ queueResults: [] });
+        
+        // Gửi URLs đến background script
+        chrome.runtime.sendMessage({
+            type: "START_BACKGROUND_QUEUE",
+            urls: urls,
+            tabId: tab.id
+        });
+        
+        backgroundQueueActive = true;
+        updateQueueUI();
+        startQueueStatusUpdates();
+        
+        // Hiển thị queue status và ẩn UI thường
+        queueStatusDiv.style.display = 'block';
+        downloadQueueBtn.style.display = 'inline-block';
+        
+        showMessage(`✅ Background queue đã bắt đầu với ${urls.length} URLs! 
+        Bạn có thể đóng popup, queue sẽ xử lý từng URL một cách tuần tự.
+        Mỗi URL sẽ được xử lý hoàn toàn trước khi chuyển sang URL tiếp theo.`, 'success');
+        
+    } catch (error) {
+        console.error('Error starting background queue:', error);
+        showMessage('❌ Lỗi khi bắt đầu background queue: ' + error.message, 'error');
     }
-    
-    // Gửi URLs đến background script
-    chrome.runtime.sendMessage({
-      type: "START_BACKGROUND_QUEUE",
-      urls: urls,
-      tabId: tab.id
-    });
-    
-    backgroundQueueActive = true;
-    updateQueueUI();
-    startQueueStatusUpdates();
-    
-    // Hiển thị queue status và ẩn UI thường
-    queueStatusDiv.style.display = 'block';
-    downloadQueueBtn.style.display = 'inline-block';
-    
-    showMessage('✅ Background queue đã bắt đầu! Bạn có thể đóng popup.', 'success');
-    
-  } catch (error) {
-    console.error('Error starting background queue:', error);
-    showMessage('❌ Lỗi khi bắt đầu background queue: ' + error.message, 'error');
-  }
 }
 
 /**
  * Cập nhật UI queue controls
  */
 function updateQueueUI() {
-  if (backgroundQueueActive) {
-    backgroundModeCheckbox.disabled = true;
-    startBtn.disabled = true;
-  } else {
-    backgroundModeCheckbox.disabled = false;
-    startBtn.disabled = false;
-    queueStatusDiv.style.display = 'none';
-    downloadQueueBtn.style.display = 'none';
-  }
+    const bodyElement = document.body;
+    
+    if (backgroundQueueActive) {
+        // Add class để trigger CSS hiding
+        bodyElement.classList.add('queue-mode-active');
+        
+        // Ẩn tất cả pack mode controls
+        backgroundModeCheckbox.disabled = true;
+        startBtn.disabled = true;
+        pauseBtn.style.display = 'none';
+        stopBtn.style.display = 'none';
+        
+        // Ẩn pack navigation
+        const packNavigation = document.querySelector('.pack-navigation');
+        if (packNavigation) packNavigation.style.display = 'none';
+        
+        // Ẩn auto run checkbox
+        const autoRunCheckbox = document.getElementById('autoRunCheckbox');
+        if (autoRunCheckbox) {
+            autoRunCheckbox.disabled = true;
+            autoRunCheckbox.parentElement.style.display = 'none';
+        }
+        
+        // Ẩn chunk size input
+        if (chunkSizeInput) {
+            chunkSizeInput.disabled = true;
+            chunkSizeInput.parentElement.style.display = 'none';
+        }
+        
+        // Ẩn download CSV button thường
+        const downloadBtn = document.getElementById('downloadBtn');
+        if (downloadBtn) downloadBtn.style.display = 'none';
+        
+        // Ẩn info table pack mode
+        const infoTable = document.querySelector('.info-table-container');
+        if (infoTable) infoTable.style.display = 'none';
+        
+        console.log('🔄 Queue mode UI activated');
+        
+    } else {
+        // Remove class để hiện lại UI
+        bodyElement.classList.remove('queue-mode-active');
+        
+        // Hiện lại tất cả pack mode controls
+        backgroundModeCheckbox.disabled = false;
+        startBtn.disabled = false;
+        pauseBtn.style.display = 'inline-block';
+        stopBtn.style.display = 'inline-block';
+        
+        // Hiện pack navigation
+        const packNavigation = document.querySelector('.pack-navigation');
+        if (packNavigation) packNavigation.style.display = 'flex';
+        
+        // Hiện auto run checkbox
+        const autoRunCheckbox = document.getElementById('autoRunCheckbox');
+        if (autoRunCheckbox) {
+            autoRunCheckbox.disabled = false;
+            autoRunCheckbox.parentElement.style.display = 'flex';
+        }
+        
+        // Hiện chunk size input
+        if (chunkSizeInput) {
+            chunkSizeInput.disabled = false;
+            chunkSizeInput.parentElement.style.display = 'flex';
+        }
+        
+        // Hiện download CSV button thường
+        const downloadBtn = document.getElementById('downloadBtn');
+        if (downloadBtn) downloadBtn.style.display = 'inline-block';
+        
+        // Hiện info table pack mode
+        const infoTable = document.querySelector('.info-table-container');
+        if (infoTable) infoTable.style.display = 'block';
+        
+        // Ẩn queue UI
+        queueStatusDiv.style.display = 'none';
+        downloadQueueBtn.style.display = 'none';
+        
+        console.log('📦 Pack mode UI activated');
+    }
 }
 
 /**

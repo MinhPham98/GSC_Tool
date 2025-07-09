@@ -435,3 +435,33 @@ body {
     justify-content: center;
   }
 }
+
+/* ========== QUEUE MODE UI STATES ========== */
+.queue-mode-active .pack-navigation,
+.queue-mode-active .form-group--inline:not(.background-queue-section),
+.queue-mode-active .info-table-container,
+.queue-mode-active .actions__row .button:not([id*="queue"]) {
+  display: none !important;
+}
+
+.queue-mode-active .queue-status {
+  display: block !important;
+}
+
+.queue-mode-active .form-group__input,
+.queue-mode-active .form-group__label {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.queue-mode-active #links {
+  opacity: 1;
+  pointer-events: auto;
+  border: 2px solid #1976d2;
+  background: #f3f8ff;
+}
+
+/* Hide elements cleanly when in queue mode */
+.hidden-in-queue-mode {
+  display: none !important;
+}
