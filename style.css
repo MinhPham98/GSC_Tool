@@ -1,8 +1,12 @@
 * {
   margin: 0;
   padding: 0;
- 
   box-sizing: border-box;
+}
+
+/* ========== UTILITY CLASSES ========== */
+.hidden {
+  display: none !important;
 }
 
 body {
@@ -464,4 +468,28 @@ body {
 /* Hide elements cleanly when in queue mode */
 .hidden-in-queue-mode {
   display: none !important;
+}
+
+/* ===== QUEUE INFO TABLE ===== */
+.queue-info-table-container {
+  margin-top: 1rem;
+}
+
+.queue-info-table-container .info-table__label {
+  font-weight: 500;
+}
+
+.queue-info-table-container .queue-total-urls {
+  color: #1976d2;
+  font-weight: bold;
+}
+
+.queue-info-table-container .queue-success-urls {
+  color: #43a047;
+  font-weight: bold;
+}
+
+.queue-info-table-container .queue-error-urls {
+  color: #d32f2f;
+  font-weight: bold;
 }

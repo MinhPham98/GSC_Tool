@@ -54,17 +54,17 @@
       </div>
       <div class="actions__row">
         <button id="downloadBtn" class="button button--download">Tải kết quả CSV</button>
-        <button id="downloadQueueBtn" class="button button--download" style="display:none;">Tải kết quả Queue</button>
+        <button id="downloadQueueBtn" class="button button--download hidden">Tải kết quả Queue</button>
       </div>
     </div>
     
     <!-- ========== BACKGROUND QUEUE STATUS ========== -->
-    <div id="queue-status" class="queue-status" style="display:none;">
+    <div id="queue-status" class="queue-status hidden">
       <div class="queue-status__header">
         <h4>🔄 Background Queue Status</h4>
         <div class="queue-status__controls">
           <button id="pauseQueueBtn" class="button button--small button--pause">Tạm dừng Queue</button>
-          <button id="resumeQueueBtn" class="button button--small button--start" style="display:none;">Tiếp tục Queue</button>
+          <button id="resumeQueueBtn" class="button button--small button--start hidden">Tiếp tục Queue</button>
           <button id="stopQueueBtn" class="button button--small button--stop">Dừng Queue</button>
         </div>
       </div>
@@ -87,6 +87,8 @@
       <div id="messages" class="messages"></div>
       <div id="errors" class="errors"></div>
     </div>
+    
+    <!-- Pack Mode Info Table -->
     <div class="info-table-container">
       <table class="info-table">
         <tr>
@@ -112,6 +114,24 @@
         <tr>
           <td class="info-table__label">Số URL đã gửi</td>
           <td class="info-table__value sent-url">0</td>
+        </tr>
+      </table>
+    </div>
+
+    <!-- Queue Mode Info Table -->
+    <div class="queue-info-table-container hidden">
+      <table class="info-table">
+        <tr>
+          <td class="info-table__label">🔄 URLs trong Queue</td>
+          <td class="info-table__value queue-total-urls">0</td>
+        </tr>
+        <tr>
+          <td class="info-table__label">✅ URLs Thành công</td>
+          <td class="info-table__value queue-success-urls">0</td>
+        </tr>
+        <tr>
+          <td class="info-table__label">❌ URLs Lỗi</td>
+          <td class="info-table__value queue-error-urls">0</td>
         </tr>
       </table>
     </div>
