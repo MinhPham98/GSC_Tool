@@ -229,10 +229,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         // Reset processing flag khi URL đã hoàn thành
         isProcessingUrl = false;
         
-        // Chờ một chút trước khi chuyển URL tiếp theo để tránh race condition
+        // Optimized delay: faster transition between URLs
         setTimeout(() => {
             processNextUrl();
-        }, 1000);
+        }, 500); // Reduced from 1000ms to 500ms for faster queue processing
         
         return false;
     }
@@ -400,12 +400,12 @@ async function processNextUrl() {
             currentUrlIndex: currentUrlIndex 
         });
         
-        // Tiếp tục URL tiếp theo với delay để tránh quá nhanh
+        // Tiếp tục URL tiếp theo với optimized delay
         if (!queuePaused && queueProcessing) {
-            log('QUEUE', '⏳ Waiting 2 seconds before processing next URL...');
+            log('QUEUE', '⏳ Waiting 1.5 seconds before processing next URL...');
             setTimeout(async () => {
                 await startQueueProcessing();
-            }, 2000);
+            }, 1500); // Reduced from 2000ms to 1500ms for faster processing
         } else {
             log('QUEUE', '⏸️ Queue paused or stopped, not processing next URL');
         }

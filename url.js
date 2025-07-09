@@ -405,7 +405,7 @@ async function processSingleUrlFromQueue(url, queueIndex) {
         await delay(1500);
         
         const submitButtonFound = await submitRequest(false);
-        await delay(2000);
+        await delay(1500); // Reduced from 2000ms to 1500ms
         
         // Kiểm tra kết quả
         let reason = "", status = "";
@@ -422,7 +422,9 @@ async function processSingleUrlFromQueue(url, queueIndex) {
             log('DEBUG', `URL ${queueIndex + 1} - Success`);
         }
         
-        await delay(1500);
+        // Adaptive delay: shorter for success, longer for errors
+        const adaptiveDelay = status === "success" ? 1000 : 1500;
+        await delay(adaptiveDelay);
         
         log('DEBUG', `About to save result for URL ${queueIndex + 1}:`, {
             url: url,
@@ -535,7 +537,7 @@ async function processSingleUrlFromQueue(url, queueIndex) {
             for (let k = 0; k < closeButton.length; k++) {
                 if ((closeButton[k].childNodes[0] && (closeButton[k].childNodes[0].textContent).toLowerCase() == 'close')) {
                     closeButton[k].click();
-                    await delay(1500);
+                    await delay(1000); // Reduced from 1500ms to 1000ms for faster error handling
                     log('DEBUG', `Error popup closed for URL ${queueIndex + 1}`);
                 }
             }
