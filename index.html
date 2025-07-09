@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="UTF-8">
+  <title>GSC Tool by APPNET</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+  <div class="header">
+    <img src="https://ssl.gstatic.com/search-console/scfe/sc_logo_lockup_v3.svg" alt="GSC Logo" class="header__logo">
+    <h3 class="header__title">GSC Tool by APPNET</h3>
+    <h5 class="header__subtitle">Tự động gửi yêu cầu xoá URL trên GSC.</h5>
+  </div>
+  <div class="main">
+    <div class="form-group form-group--file">
+      <label class="form-group__label" for="fileInput">Tải file (TXT):</label>
+      <input class="form-group__input" type="file" id="fileInput" accept=".txt">
+      <small class="form-group__helper-text">Chỉ hỗ trợ file TXT, mỗi dòng 1 URL</small>
+    </div>
+    <div class="form-group form-group--inline">
+      <label class="form-group__label" for="chunkSize">Số URL mỗi pack:</label>
+      <input class="form-group__input" type="number" id="chunkSize" min="1" max="100" value="10">
+    </div>
+    <div class="form-group form-group--inline">
+      <label class="form-group__label" for="autoRunCheckbox">Tự động chạy tất cả pack</label>
+      <input class="form-group__checkbox" type="checkbox" id="autoRunCheckbox">
+
+    </div>
+
+    <div class="form-group">
+      <label class="form-group__label" for="links">Dán URL vào đây:</label>
+      <textarea class="form-group__input" id="links" rows="5"></textarea>
+    </div>
+    <div class="pack-navigation">
+      <button id="firstPackBtn" class="button button--nav" title="Lùi 10 pack">&lt;&lt;</button>
+      <button id="prevPackBtn" class="button button--nav" disabled>Trước</button>
+      <span id="packInfo">Pack 1/1</span>
+      <button id="nextPackBtn" class="button button--nav" disabled>Sau</button>
+      <button id="lastPackBtn" class="button button--nav" title="Tiến 10 pack">&gt;&gt;</button>
+    </div>
+    <div class="actions">
+      <div class="actions__row actions__row--main">
+        <button id="startBtn" class="button button--start">Bắt đầu</button>
+        <button id="pauseBtn" class="button button--pause">Tạm dừng</button>
+        <button id="stopBtn" class="button button--stop">Kết thúc</button>
+      </div>
+      <div class="actions__row">
+        <button id="downloadBtn" class="button button--download">Tải kết quả CSV</button>
+      </div>
+    </div>
+    <div id="progress-container" class="progress" style="display:none;">
+      <div class="indeterminate"></div>
+    </div>
+    <div class="noti-container">
+      <div id="messages" class="messages"></div>
+      <div id="errors" class="errors"></div>
+    </div>
+    <div class="info-table-container">
+      <table class="info-table">
+        <tr>
+          <td class="info-table__label">Tổng URL</td>
+          <td class="info-table__value total-url">0</td>
+        </tr>
+        <tr>
+          <td class="info-table__label">Tổng số pack</td>
+          <td class="info-table__value total-pack">0</td>
+        </tr>
+        <tr>
+          <td class="info-table__label">URL Thành công</td>
+          <td class="info-table__value url-success">0</td>
+        </tr>
+        <tr>
+          <td class="info-table__label">URL Error</td>
+          <td class="info-table__value url-error">0</td>
+        </tr>
+        <tr>
+          <td class="info-table__label">Số pack đã gửi</td>
+          <td class="info-table__value sent-pack">0</td>
+        </tr>
+        <tr>
+          <td class="info-table__label">Số URL đã gửi</td>
+          <td class="info-table__value sent-url">0</td>
+        </tr>
+      </table>
+    </div>
+  </div>
+  <script type="module" src="index.js"></script>
+</body>
+
+</html>

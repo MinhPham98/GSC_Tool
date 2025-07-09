@@ -1,0 +1,392 @@
+* {
+  margin: 0;
+  padding: 0;
+ 
+  box-sizing: border-box;
+}
+
+body {
+  font-family: Arial, sans-serif;
+  background: #f7f7f7;
+  margin: 0;
+  padding: 0;
+}
+
+.header {
+  background: linear-gradient(220deg, #4285F4 0%, #EA4335 25%, #FBBC05 60%, #34A853 100%);
+  padding: 18px 0 12px 0;
+  text-align: center;
+  border-radius: 0 0 18px 18px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.07);
+}
+.header__logo {
+  max-width: 80%;
+  margin-bottom: 6px;
+  background: transparent;
+}
+.header__title {
+  color: #fff;
+  font-weight: bold;
+  margin: 0;
+  letter-spacing: 1px;
+  text-shadow: 0 1px 8px rgba(0,0,0,0.13);
+}
+.header__subtitle {
+  color: #fff;
+  margin: 0;
+  font-size: 1em;
+  opacity: 0.92;
+  text-shadow: 0 1px 8px rgba(0,0,0,0.10);
+}
+
+.main {
+  max-width: 440px;
+  width: 320px;
+  margin: 0 auto;
+  background: #fff;
+  border-radius: 0 0 10px 10px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.07);
+  padding: 22px 18px 18px 18px;
+}
+
+.form-group {
+  margin-bottom: 1.1rem;
+  display: flex;
+  flex-direction: column;
+}
+.form-group--inline {
+  flex-direction: row;
+  align-items: center;
+  gap: 14px;
+}
+.form-group__label {
+  font-weight: 500;
+  color: #000;
+  font-size: 14px;
+}
+.form-group__label[for="links"] {
+  margin-bottom: 8px;
+  display: block;
+}
+.form-group__input,
+#links,
+#chunkSize {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.5rem 0.7rem;
+  border-radius: 4px;
+  border: 1px solid #ccc;
+  font-size: 1.07rem;
+}
+.form-group__input[type="file"] {
+  padding: 0.2rem 0.5rem;
+}
+/* Thu nhỏ ô nhập số */
+#chunkSize,
+.form-group__input[type="number"] {
+  width: 70px !important;
+  min-width: 60px;
+  max-width: 100px;
+  padding: 0.2rem 0.5rem;
+ 
+  margin-left: 8px;
+  text-align: center;
+}
+.form-group__helper-text {
+  color: #888;
+  font-size: 0.97em;
+  margin-top: 0.2rem;
+}
+.form-group__checkbox {
+  width: auto;
+  margin-right: 8px;
+  accent-color: #1976d2;
+}
+
+/* Nổi bật checkbox tự động chạy */
+.form-group--inline label[for="autoRunCheckbox"] {
+  font-weight: bold;
+  color: #1976d2;
+  font-size: 1.09em;
+  letter-spacing: 0.5px;
+  margin-right: 10px;
+}
+
+#autoRunCheckbox {
+  width: 22px;
+  height: 22px;
+  accent-color: #1976d2;
+  border-radius: 4px;
+  box-shadow: 0 1px 4px rgba(33,150,243,0.10);
+  margin-right: 8px;
+  vertical-align: middle;
+  cursor: pointer;
+  transition: box-shadow 0.2s;
+}
+
+#autoRunCheckbox:focus {
+  outline: 2px solid #1976d2;
+  box-shadow: 0 0 0 2px #90caf9;
+}
+
+.actions {
+  margin-bottom: 14px;
+}
+.actions__row {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 22px;
+  margin-bottom: 10px;
+  flex-wrap: wrap; /* Cho phép tự động xuống dòng nếu không đủ chỗ */
+}
+.actions__row--main {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+  flex-wrap: nowrap;
+  width: 100%;
+}
+.button {
+  min-width: 60px;
+  max-width: 90px;
+  flex: 1 1 0;
+  padding: 8px 0;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  cursor: pointer;
+  font-weight: bold;
+  transition: background 0.2s;
+  box-shadow: 0 2px 4px rgba(33,150,243,0.08);
+  height: 40px;
+  /* Bỏ margin để các button đều nhau */
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.button--start {
+  background: #1976d2;
+  color: #fff;
+}
+.button--pause {
+  background: #ffc107;
+  color: #333;
+}
+.button--stop {
+  background: #e53935;
+  color: #fff;
+  min-width: 120px;
+  padding: 11px 0;
+}
+.button--nav {
+  background: #6f42c1;
+  color: #fff;
+  min-width: 48px;
+  max-width: 60px;
+  padding: 6px 0;
+  font-size: 0.97rem;
+  border-radius: 4px;
+  font-weight: bold;
+  height: 32px;
+  box-shadow: 0 2px 4px rgba(33,150,243,0.08);
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.button--download {
+  display: block;
+  width: 100%;
+  min-width: 180px;
+  max-width: 100%;
+  box-sizing: border-box;
+  background: #43a047;
+  color: #fff;
+  padding: 14px 0;
+  border-radius: 4px;
+  font-size: 1.08rem;
+  font-weight: bold;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 2px 4px rgba(33,150,243,0.08);
+  transition: background 0.2s;
+}
+.button:disabled,
+.button--nav:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.pack-navigation {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px; /* Thu nhỏ khoảng cách giữa các nút */
+  margin: 12px 0 8px 0;
+}
+#packInfo {
+  font-weight: 500;
+  min-width: 70px;
+  text-align: center;
+  font-size: 1.02rem;
+}
+
+.info-table-container {
+  margin-top: 18px;
+}
+.info-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0 auto;
+  font-size: 1.18em;
+  background: #f5f7fa;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 1px 4px rgba(33,150,243,0.04);
+}
+.info-table__label {
+  text-align: left;
+  padding: 10px 0 10px 12px;
+  color: #555;
+  width: 60%;
+  background: #e3f2fd;
+  font-size: 1.04em;
+}
+.info-table__value {
+  text-align: center; /* Căn giữa số */
+  padding: 10px 12px 10px 0;
+  color: #222;
+  width: 40%;
+  font-weight: 600;
+  background: #e3f2fd;
+  font-size: 1.04em;
+}
+.info-table__value.total-url {
+  color: #1976d2;
+  font-weight: bold;
+}
+.info-table__value.total-pack {
+  color: #6f42c1;
+  font-weight: bold;
+}
+.info-table__value.url-success {
+  color: #43a047;
+  font-weight: bold;
+}
+.info-table__value.url-error {
+  color: #e53935;
+  font-weight: bold;
+}
+.info-table__value.sent-pack {
+  color: #ff9800;
+  font-weight: bold;
+}
+.info-table__value.sent-url {
+  color: #0288d1;
+  font-weight: bold;
+}
+
+.messages {
+  text-align: center;
+  color: #1976d2;
+  margin-bottom: 10px;
+  font-size: 1.08em;
+  min-height: 10px; /* Thêm dòng này */
+}
+.errors {
+  color: #e53935;
+  text-align: center;
+  margin-bottom: 10px;
+  font-size: 1.08em;
+  min-height: 10px; /* Thêm dòng này */
+}
+
+.progress {
+  width: 100%;
+  height: 4px;
+  background: #e0e0e0;
+  border-radius: 2px;
+  overflow: hidden;
+  margin-bottom: 14px;
+}
+.indeterminate {
+  width: 40%;
+  height: 100%;
+  background: #1976d2;
+  animation: indeterminate 1.2s infinite linear;
+  border-radius: 2px;
+}
+@keyframes indeterminate {
+  0% { margin-left: -40%; }
+  100% { margin-left: 100%; }
+}
+
+@media (max-width: 480px) {
+  .main {
+    max-width: 98vw;
+    padding: 16px 10px;
+  }
+  .info-table {
+    font-size: 1em;
+  }
+  .button {
+    min-width: 40px;
+    font-size: 1em;
+    width: 100%;
+  }
+  .actions__row {
+    flex-direction: row;
+    gap: 10px;
+  }
+}
+
+/* Responsive: Nếu không đủ chỗ, Kết thúc sẽ xuống hàng riêng */
+@media (max-width: 420px) {
+  .actions__row--main {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .button {
+    min-width: 110px;
+    font-size: 1em;
+    flex: 1 1 45%;
+  }
+  
+}
+
+/* Responsive: Nếu màn nhỏ quá thì mới cho xuống dòng */
+@media (max-width: 370px) {
+  .actions__row--main {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .button {
+    min-width: 40px;
+    width: 100%;
+    font-size: 0.97em;
+    margin-bottom: 0;
+  }
+  
+}
+
+/* Format chuẩn cho textarea nhập URL */
+#links,
+.form-group__input[type="textarea"] {
+  width: 100%;
+  min-height: 90px;
+  max-height: 220px;
+  font-size: 1.08em;
+  font-family: 'Fira Mono', 'Consolas', 'Menlo', 'Monaco', monospace;
+  padding: 0.5rem 0.7rem;
+  border-radius: 4px;
+  border: 1px solid #ccc;
+  box-sizing: border-box;
+  resize: vertical;
+  background: #f9f9f9;
+  color: #222;
+}
