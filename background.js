@@ -64,19 +64,6 @@ chrome.runtime.onConnect.addListener((port) => {
     log('DEBUG', '🔗 Port connected:', port.name);
 });
 
-// Theo dõi các sự kiện có thể reset log
-chrome.management.onEnabled.addListener((info) => {
-    if (info.id === chrome.runtime.id) {
-        log('WARN', '🔄 Extension was re-enabled - logs may be reset');
-    }
-});
-
-chrome.management.onDisabled.addListener((info) => {
-    if (info.id === chrome.runtime.id) {
-        log('WARN', '⏹️ Extension is being disabled');
-    }
-});
-
 // Lắng nghe lệnh từ popup
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     try {

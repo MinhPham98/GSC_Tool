@@ -16,7 +16,6 @@
     "storage",
     "scripting",
     "tabs",
-    "background",
     "alarms"
   ],
   "action": {
