@@ -405,7 +405,7 @@ async function processSingleUrlFromQueue(url, queueIndex) {
         await delay(1500);
         
         const submitButtonFound = await submitRequest(false);
-        await delay(3000);
+        await delay(2000);
         
         // Kiểm tra kết quả
         let reason = "", status = "";
@@ -422,7 +422,7 @@ async function processSingleUrlFromQueue(url, queueIndex) {
             log('DEBUG', `URL ${queueIndex + 1} - Success`);
         }
         
-        await delay(2000);
+        await delay(1500);
         
         log('DEBUG', `About to save result for URL ${queueIndex + 1}:`, {
             url: url,
