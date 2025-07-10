@@ -140,21 +140,18 @@ if (downloadQueueBtn) {
 document.addEventListener('DOMContentLoaded', () => {
     popupLog('INFO', '📄 DOM loaded, waiting for modules to initialize...');
     
-    // Give modules time to load and initialize
-    setTimeout(() => {
-        popupLog('INFO', '🔧 Checking module availability...');
-        
-        // Check if all required modules are loaded
+    // Function to check module availability
+    function checkModules() {
         const modulesLoaded = {
-            popupUtils: typeof parseLinksFromText !== 'undefined',
-            uiComponents: typeof showMessage !== 'undefined',
-            progressTracker: typeof updatePackDisplay !== 'undefined',
-            queueManager: typeof startBackgroundQueue !== 'undefined',
-            packManager: typeof startPackAutoRun !== 'undefined',
+            popupUtils: typeof window.PopupUtils !== 'undefined',
+            uiComponents: typeof window.UIComponents !== 'undefined', 
+            progressTracker: typeof window.ProgressTracker !== 'undefined',
+            queueManager: typeof window.QueueManager !== 'undefined',
+            packManager: typeof window.PackManager !== 'undefined',
             popupCore: typeof PopupCore !== 'undefined'
         };
         
-        popupLog('INFO', '📊 Module loading status:', modulesLoaded);
+        popupLog('DEBUG', '📊 Module loading status:', modulesLoaded);
         
         const allLoaded = Object.values(modulesLoaded).every(loaded => loaded);
         
@@ -166,18 +163,27 @@ document.addEventListener('DOMContentLoaded', () => {
                 window.popupCore = new PopupCore();
                 popupLog('INFO', '🎯 PopupCore initialized from main entry');
             }
+            return true;
         } else {
-            popupLog('WARN', '⚠️ Some modules not loaded yet, retrying...', modulesLoaded);
+            const missingModules = Object.entries(modulesLoaded)
+                .filter(([name, loaded]) => !loaded)
+                .map(([name]) => name);
             
-            // Retry after a short delay
-            setTimeout(() => {
-                if (typeof PopupCore !== 'undefined' && !window.popupCore) {
-                    window.popupCore = new PopupCore();
-                    popupLog('INFO', '🎯 PopupCore initialized after retry');
-                }
-            }, 500);
+            popupLog('WARN', '⚠️ Missing modules:', missingModules);
+            return false;
         }
-        
+    }
+    
+    // Initial check with a small delay to allow scripts to execute
+    setTimeout(() => {
+        if (!checkModules()) {
+            // Retry after a longer delay
+            setTimeout(() => {
+                if (!checkModules()) {
+                    popupLog('ERROR', '❌ Modules failed to load after retries, continuing with basic functionality');
+                }
+            }, 1000);
+        }
     }, 100);
 });
 
