@@ -1,6 +1,11 @@
 # Changelog
-
-Tất cả các thay đổi quan trọng của dự án này sẽ được ghi lại trong file này.
+### 🐛 Bug Fixes
+- **🔍 Enhanced Error Detection:** Thêm phát hiện lỗi "URL not in property" và các lỗi GSC khác
+- **⏱️ Fixed ETA Calculation After Popup Reload:** Sửa lỗi hiển thị "0s (Infinity URLs/min)" khi đóng mở popup
+- **🔧 Fixed Queue Timing Issue:** Loại bỏ fixed 2s delay, giờ queue đợi hoàn tất URL hiện tại trước khi xử lý URL tiếp theo
+- **🎨 Fixed UI Overlap Bug:** Khi mở popup trong queue mode, tự động ẩn tất cả pack mode controls
+- **⏱️ Improved Processing Timing:** Tăng delays trong quá trình xử lý để đảm bảo GSC response đầy đủ
+- **🧹 Better Error Handling:** Đợi popup đóng hoàn toàn trước khi tiếp tục queuecả các thay đổi quan trọng của dự án này sẽ được ghi lại trong file này.
 
 ## [1.1.1] - 2025-07-10
 

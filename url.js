@@ -172,12 +172,51 @@ async function submitRequest(submitButtonFound) {
 async function checkOutcome(urlList, index, submitButtonFound) {
     let reason = "", status = "";
     if (document.querySelectorAll('.PNenzf').length > 0) {
-        reason = "Trùng lặp URL"; status = "error";
+        reason = "Trùng lặp URL"; 
+        status = "error";
     } else if (!submitButtonFound) {
-        reason = "Lỗi gửi"; status = "error";
+        reason = "Lỗi gửi"; 
+        status = "error";
     } else {
-        status = "success";
+        // Check for "URL not in property" error
+        const errorMessages = document.querySelectorAll('.Ekjuhf, .zFr8rd, .jfk-bubble-content-id, .jfk-bubble-closebtn-id');
+        let propertyError = false;
+        for (let errorEl of errorMessages) {
+            const errorText = errorEl.textContent || errorEl.innerText || "";
+            if (errorText.toLowerCase().includes('not in property') || 
+                errorText.toLowerCase().includes('switch properties') ||
+                errorText.toLowerCase().includes('currently selected property')) {
+                reason = "URL không thuộc property hiện tại";
+                status = "error";
+                propertyError = true;
+                console.log(`🔴 PACK: Property error for URL ${index + 1}: ${errorText}`);
+                break;
+            }
+        }
+        
+        // Check for other common GSC errors
+        if (!propertyError) {
+            const allErrorElements = document.querySelectorAll('[role="alert"], .error, .warning, .jfk-bubble');
+            for (let errorEl of allErrorElements) {
+                const errorText = errorEl.textContent || errorEl.innerText || "";
+                if (errorText.trim().length > 0 && 
+                    (errorText.toLowerCase().includes('error') || 
+                     errorText.toLowerCase().includes('invalid') ||
+                     errorText.toLowerCase().includes('failed'))) {
+                    reason = `Lỗi GSC: ${errorText.substring(0, 100)}`;
+                    status = "error";
+                    console.log(`🔴 PACK: GSC error for URL ${index + 1}: ${errorText}`);
+                    break;
+                }
+            }
+        }
+        
+        // If no errors detected, mark as success
+        if (status === "") {
+            status = "success";
+        }
     }
+    
     const resultObj = { id: index + 1, url: urlList[index], status, reason };
     resultLinks.push(resultObj);
     chrome.storage.local.set({ resultLinks }); // Lưu vào cache
@@ -418,8 +457,44 @@ async function processSingleUrlFromQueue(url, queueIndex) {
             status = "error";
             log('DEBUG', `URL ${queueIndex + 1} - Submit failed`);
         } else {
-            status = "success";
-            log('DEBUG', `URL ${queueIndex + 1} - Success`);
+            // Check for "URL not in property" error
+            const errorMessages = document.querySelectorAll('.Ekjuhf, .zFr8rd, .jfk-bubble-content-id, .jfk-bubble-closebtn-id');
+            let propertyError = false;
+            for (let errorEl of errorMessages) {
+                const errorText = errorEl.textContent || errorEl.innerText || "";
+                if (errorText.toLowerCase().includes('not in property') || 
+                    errorText.toLowerCase().includes('switch properties') ||
+                    errorText.toLowerCase().includes('currently selected property')) {
+                    reason = "URL không thuộc property hiện tại";
+                    status = "error";
+                    propertyError = true;
+                    log('DEBUG', `URL ${queueIndex + 1} - Property error: ${errorText}`);
+                    break;
+                }
+            }
+            
+            // Check for other common GSC errors
+            if (!propertyError) {
+                const allErrorElements = document.querySelectorAll('[role="alert"], .error, .warning, .jfk-bubble');
+                for (let errorEl of allErrorElements) {
+                    const errorText = errorEl.textContent || errorEl.innerText || "";
+                    if (errorText.trim().length > 0 && 
+                        (errorText.toLowerCase().includes('error') || 
+                         errorText.toLowerCase().includes('invalid') ||
+                         errorText.toLowerCase().includes('failed'))) {
+                        reason = `Lỗi GSC: ${errorText.substring(0, 100)}`;
+                        status = "error";
+                        log('DEBUG', `URL ${queueIndex + 1} - GSC error: ${errorText}`);
+                        break;
+                    }
+                }
+            }
+            
+            // If no errors detected, mark as success
+            if (status === "") {
+                status = "success";
+                log('DEBUG', `URL ${queueIndex + 1} - Success`);
+            }
         }
         
         // Adaptive delay: shorter for success, longer for errors
