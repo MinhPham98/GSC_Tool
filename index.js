@@ -49,6 +49,7 @@ const backgroundModeCheckbox = document.getElementById('backgroundModeCheckbox')
 const queueStatusDiv = document.getElementById('queue-status');
 const pauseQueueBtn = document.getElementById('pauseQueueBtn');
 const resumeQueueBtn = document.getElementById('resumeQueueBtn');
+const resumeStoppedBtn = document.getElementById('resumeStoppedBtn');
 const stopQueueBtn = document.getElementById('stopQueueBtn');
 const downloadQueueBtn = document.getElementById('downloadQueueBtn');
 const queueProgressFill = document.getElementById('queueProgressFill');
@@ -599,8 +600,30 @@ document.addEventListener('DOMContentLoaded', async function() {
             return;
         }
         
-        // 3. Nếu không có queue, load pack mode state
-        console.log('📦 No active queue, loading pack mode state...');
+        // 3. Nếu không có queue, check for stopped queue
+        console.log('📦 No active queue, checking for stopped queue...');
+        
+        // Check for stopped queue
+        chrome.runtime.sendMessage({ type: "CHECK_STOPPED_QUEUE" }, (response) => {
+            if (response && response.hasStoppedQueue) {
+                const stoppedQueue = response.stoppedQueue;
+                popupLog('INFO', '� Found stopped queue:', {
+                    remainingUrls: stoppedQueue.urls.length,
+                    processedCount: stoppedQueue.processedCount,
+                    stopTime: new Date(stoppedQueue.stopTime).toLocaleString()
+                });
+                
+                // Show resume button
+                resumeStoppedBtn.classList.remove('hidden');
+                resumeStoppedBtn.style.display = 'inline-block';
+                
+                // Show notification about stopped queue
+                showMessage(`📋 Tìm thấy queue đã dừng (${stoppedQueue.urls.length} URLs còn lại)`, 'info');
+            } else {
+                // Hide resume button if no stopped queue
+                resumeStoppedBtn.classList.add('hidden');
+            }
+        });
         
         // Ensure queue mode is OFF
         backgroundQueueActive = false;
@@ -938,6 +961,16 @@ function updateQueueUI() {
         
         // Hide download queue button (trừ khi có queue results)
         if (downloadQueueBtn) downloadQueueBtn.classList.add('hidden');
+        
+        // Check for stopped queue and show resume button if needed
+        chrome.runtime.sendMessage({ type: "CHECK_STOPPED_QUEUE" }, (response) => {
+            if (response && response.hasStoppedQueue) {
+                resumeStoppedBtn.classList.remove('hidden');
+                resumeStoppedBtn.style.display = 'inline-block';
+            } else {
+                resumeStoppedBtn.classList.add('hidden');
+            }
+        });
         
         // Show pack mode info table và hide queue info table - NHƯNG kiểm tra có kết quả queue không
         chrome.storage.local.get(['queueResults'], (data) => {
@@ -1585,6 +1618,39 @@ setTimeout(() => {
     console.log('   • Lock/unlock máy');
     console.log('');
 }, 1000);
+
+// ===== Khôi phục trạng thái hàng đợi đã dừng =====
+
+resumeStoppedBtn.addEventListener('click', async function() {
+  popupLog('UI', '🔄 Resume stopped queue button clicked');
+  
+  // Check if there's a stopped queue first
+  chrome.runtime.sendMessage({ type: "CHECK_STOPPED_QUEUE" }, (response) => {
+    if (response && response.hasStoppedQueue) {
+      const stoppedQueue = response.stoppedQueue;
+      const message = `Tìm thấy queue đã dừng:\n` +
+                     `- URLs còn lại: ${stoppedQueue.urls.length}\n` +
+                     `- Đã xử lý: ${stoppedQueue.processedCount}/${stoppedQueue.totalOriginal}\n` +
+                     `- Dừng lúc: ${new Date(stoppedQueue.stopTime).toLocaleString()}\n\n` +
+                     `Bạn có muốn tiếp tục queue này?`;
+      
+      if (confirm(message)) {
+        popupLog('INFO', '🔄 Resuming stopped queue...', stoppedQueue);
+        chrome.runtime.sendMessage({ type: "RESUME_BACKGROUND_QUEUE" });
+        
+        // Activate queue mode UI
+        backgroundQueueActive = true;
+        backgroundModeCheckbox.checked = true;
+        updateQueueUI();
+        startQueueStatusUpdates();
+        
+        showMessage('🔄 Queue đã được khôi phục và tiếp tục!', 'success');
+      }
+    } else {
+      showMessage('❌ Không tìm thấy queue đã dừng nào để khôi phục', 'error');
+    }
+  });
+});
 
 
 

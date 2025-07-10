@@ -154,6 +154,24 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         return false;
     }
     
+    if (msg.type === "RESUME_BACKGROUND_QUEUE") {
+        log('QUEUE', '▶️ Background queue resume requested');
+        (async () => {
+            await resumeQueueProcessing();
+        })();
+        return false;
+    }
+    
+    if (msg.type === "CHECK_STOPPED_QUEUE") {
+        log('DEBUG', '🔍 Checking for stopped queue');
+        (async () => {
+            const data = await chrome.storage.local.get(['stoppedQueue']);
+            const stoppedQueue = data.stoppedQueue;
+            sendResponse({ hasStoppedQueue: !!stoppedQueue, stoppedQueue });
+        })();
+        return true; // Keep channel open for async response
+    }
+    
     if (msg.type === "GET_QUEUE_STATUS") {
         log('DEBUG', '🔍 Queue status requested');
         
@@ -420,13 +438,33 @@ async function pauseQueueProcessing() {
     log('QUEUE', '⏸️ Queue processing paused due to error');
 }
 
-async function stopQueueProcessing() {
+async function stopQueueProcessing(saveForResume = true) {
     const wasActive = backgroundMode && queueProcessing;
+    const processedCount = currentUrlIndex;
+    const remainingUrls = urlQueue.slice(currentUrlIndex);
     
+    // Save current state for potential resume
+    if (saveForResume && remainingUrls.length > 0) {
+        await chrome.storage.local.set({
+            stoppedQueue: {
+                urls: remainingUrls,
+                processedCount: processedCount,
+                totalOriginal: urlQueue.length,
+                stopTime: Date.now(),
+                queueStartTime: await chrome.storage.local.get(['queueStartTime']).then(data => data.queueStartTime)
+            }
+        });
+        log('QUEUE', '💾 Queue state saved for resume', {
+            remainingUrls: remainingUrls.length,
+            processedCount: processedCount,
+            totalOriginal: urlQueue.length
+        });
+    }
+    
+    // Reset current queue state
     backgroundMode = false;
     queueProcessing = false;
     queuePaused = false;
-    const processedCount = currentUrlIndex;
     urlQueue = [];
     currentUrlIndex = 0;
     targetTabId = null;
@@ -442,8 +480,81 @@ async function stopQueueProcessing() {
     if (wasActive) {
         log('QUEUE', '🛑 Background queue stopped', {
             processedUrls: processedCount,
-            wasCompleted: processedCount > 0
+            wasCompleted: processedCount > 0,
+            savedForResume: saveForResume && remainingUrls.length > 0
         });
+    }
+}
+
+async function resumeQueueProcessing() {
+    try {
+        log('QUEUE', '🔄 Attempting to resume queue processing...');
+        
+        // Get stopped queue state
+        const data = await chrome.storage.local.get(['stoppedQueue']);
+        const stoppedQueue = data.stoppedQueue;
+        
+        if (!stoppedQueue || !stoppedQueue.urls || stoppedQueue.urls.length === 0) {
+            log('ERROR', '❌ No stopped queue found to resume');
+            return false;
+        }
+        
+        log('QUEUE', '📊 Found stopped queue to resume:', {
+            remainingUrls: stoppedQueue.urls.length,
+            processedCount: stoppedQueue.processedCount,
+            totalOriginal: stoppedQueue.totalOriginal,
+            stopTime: new Date(stoppedQueue.stopTime).toLocaleString()
+        });
+        
+        // Find GSC tab
+        const gscTabs = await chrome.tabs.query({
+            url: "https://search.google.com/search-console/removals*"
+        });
+        
+        if (gscTabs.length === 0) {
+            log('ERROR', '❌ No GSC tab found for resume. Please open GSC removals page first.');
+            return false;
+        }
+        
+        const targetTab = gscTabs[0];
+        log('QUEUE', '🎯 Found GSC tab for resume:', targetTab.id);
+        
+        // Restore queue state
+        urlQueue = stoppedQueue.urls;
+        currentUrlIndex = 0; // Start from 0 in the remaining URLs
+        targetTabId = targetTab.id;
+        backgroundMode = true;
+        queueProcessing = true;
+        queuePaused = false;
+        
+        // Save resumed state to storage
+        await chrome.storage.local.set({
+            urlQueue: urlQueue,
+            currentUrlIndex: currentUrlIndex,
+            backgroundMode: true,
+            queueProcessing: true,
+            queuePaused: false,
+            targetTabId: targetTabId,
+            queueStartTime: stoppedQueue.queueStartTime, // Keep original start time for ETA
+            resumedFromIndex: stoppedQueue.processedCount // Track where we resumed from
+        });
+        
+        // Clear stopped queue state
+        await chrome.storage.local.remove(['stoppedQueue']);
+        
+        log('QUEUE', '✅ Queue resumed successfully', {
+            resumedUrls: urlQueue.length,
+            originalProcessed: stoppedQueue.processedCount,
+            totalOriginal: stoppedQueue.totalOriginal
+        });
+        
+        // Start processing
+        await startQueueProcessing();
+        return true;
+        
+    } catch (error) {
+        log('ERROR', '❌ Error resuming queue:', error);
+        return false;
     }
 }
 

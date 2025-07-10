@@ -220,6 +220,10 @@ body {
   box-shadow: 0 2px 4px rgba(33,150,243,0.08);
   transition: background 0.2s;
 }
+.button--resume {
+  background: #2e7d32;
+  color: #fff;
+}
 .button:disabled,
 .button--nav:disabled {
   opacity: 0.6;
