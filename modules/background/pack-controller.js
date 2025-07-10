@@ -71,7 +71,7 @@ class PackController {
             }, 'sync');
 
             // Execute content script
-            const success = await this.safeExecuteScript(this.tabId, ["url-modular.js"]);
+            const success = await this.safeExecuteScript(this.tabId, ["url.js"]);
             
             if (success) {
                 this.log('PACK', `✅ Pack ${this.currentPack + 1} sent successfully`);

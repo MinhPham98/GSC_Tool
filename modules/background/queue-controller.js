@@ -128,7 +128,7 @@ class QueueController {
             }, 'sync');
 
             // Execute content script
-            const success = await this.safeExecuteScript(this.targetTabId, ["url-modular.js"]);
+            const success = await this.safeExecuteScript(this.targetTabId, ["url.js"]);
             
             if (!success) {
                 this.log('ERROR', `❌ Failed to execute script for URL ${this.currentUrlIndex + 1}`);

@@ -38,12 +38,12 @@
         "modules/content/pack-processor.js",
         "modules/content/queue-processor.js",
         "modules/content/content-script-core.js",
-        "url-modular.js"
+        "url.js"
       ],
       "run_at": "document_end"
     }
   ],
   "background": {
-    "service_worker": "background-modular.js"
+    "service_worker": "background.js"
   }
 }

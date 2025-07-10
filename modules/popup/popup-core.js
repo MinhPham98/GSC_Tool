@@ -289,7 +289,7 @@ class PopupCore {
             chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
                 chrome.scripting.executeScript({
                     target: { tabId: tabs[0].id },
-                    files: ["url-modular.js"]
+                    files: ["url.js"]
                 });
             });
         } else {
