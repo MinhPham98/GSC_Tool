@@ -133,15 +133,24 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     
     if (msg.type === "PAUSE_BACKGROUND_QUEUE") {
         queuePaused = true;
-        chrome.storage.local.set({ queuePaused: true });
-        log('QUEUE', '⏸️ Background queue paused');
+        const pauseTime = Date.now();
+        chrome.storage.local.set({ 
+            queuePaused: true,
+            queuePauseTime: pauseTime
+        });
+        log('QUEUE', '⏸️ Background queue paused', {
+            pauseTime: new Date(pauseTime).toLocaleString()
+        });
         return false;
     }
     
     if (msg.type === "RESUME_BACKGROUND_QUEUE") {
         (async () => {
             queuePaused = false;
-            await chrome.storage.local.set({ queuePaused: false });
+            await chrome.storage.local.set({ 
+                queuePaused: false,
+                queuePauseTime: null // Clear pause time when resumed
+            });
             log('QUEUE', '▶️ Background queue resumed');
             await startQueueProcessing();
         })();
@@ -217,19 +226,45 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         return true;
     }
     if (msg.type === "STOP_AUTO_RUN") {
+        log('RESET', '🔄 Auto run stop requested - stopping all pack operations');
+        
+        // Stop any pack mode processing completely
         autoRun = false;
         isPaused = false;
+        isRunning = false;
         currentPack = 0;
+        autoRunning = false;
         urlChunks = [];
+        
+        // Clear pack related storage
+        chrome.storage.sync.set({
+            autoRun: false,
+            isPaused: false,
+            isStopped: true,
+            running: false,
+            URLs: []
+        });
+        
+        log('INFO', '✅ Pack mode completely stopped');
         return true;
     }
     
     // ========== PACK COMPLETION HANDLING ==========
     if (msg.type === "PACK_DONE") {
+        log('INFO', '📦 Pack completion received:', {
+            autoRun,
+            isPaused,
+            currentPack,
+            totalPacks: urlChunks.length
+        });
+        
+        // Double-check if we should continue (user might have stopped)
         if (autoRun && !isPaused && currentPack < urlChunks.length - 1) {
             currentPack++;
+            log('INFO', '🚀 Continuing to next pack:', currentPack);
             sendPack();
         } else {
+            log('INFO', '🏁 Pack processing completed or stopped');
             autoRun = false;
             isPaused = false;
             currentPack = 0;
@@ -270,13 +305,19 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
 // Hàm gửi pack hiện tại
 async function sendPack() {
-    log('DEBUG', '📦 Sending pack:', {
+    log('DEBUG', '📦 Attempting to send pack:', {
         currentPack,
+        autoRun,
+        isPaused,
         tabId,
         packSize: urlChunks[currentPack]?.length || 0
     });
     
-    if (!autoRun || isPaused || currentPack >= urlChunks.length) return;
+    // Double-check conditions before sending
+    if (!autoRun || isPaused || currentPack >= urlChunks.length || !urlChunks[currentPack]) {
+        log('INFO', '🚫 Pack send cancelled - conditions not met');
+        return;
+    }
     
     await chrome.storage.sync.set({ URLs: urlChunks[currentPack] });
     try {
@@ -284,9 +325,11 @@ async function sendPack() {
             target: { tabId: tabId },
             files: ["url.js"]
         });
-        log('INFO', '✅ url.js injected successfully for pack');
+        log('INFO', '✅ url.js injected successfully for pack:', currentPack);
     } catch (e) {
         log('ERROR', '❌ Failed to inject url.js for pack:', e);
+        // Stop auto run on injection failure
+        autoRun = false;
     }
 }
 
@@ -534,6 +577,7 @@ async function resumeQueueProcessing() {
             backgroundMode: true,
             queueProcessing: true,
             queuePaused: false,
+            queuePauseTime: null, // Clear any previous pause time
             targetTabId: targetTabId,
             queueStartTime: stoppedQueue.queueStartTime, // Keep original start time for ETA
             resumedFromIndex: stoppedQueue.processedCount // Track where we resumed from

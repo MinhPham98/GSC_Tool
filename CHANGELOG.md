@@ -1,5 +1,16 @@
-# Changelog
-### 🐛 Bug Fixes
+# Changelog### � New Features
+- **🔄 Reset All Button:** Nút reset toàn bộ extension về trạng thái ban đầu
+  - Dừng tất cả queue và pack đang chạy
+  - Xóa toàn bộ storage data (sync + local)
+  - Reset UI về trạng thái như lần đầu mở popup
+  - Confirmation dialog với thông tin chi tiết
+  - Option reload popup sau khi reset
+- **🔄 Resume Stopped Queue:** Khôi phục queue đã dừng với đầy đủ thông tin
+  - Lưu trạng thái queue khi nhấn "Dừng" thay vì xóa hoàn toàn
+  - Nút "Khôi phục Queue đã dừng" xuất hiện khi có queue đã dừng
+  - Hiển thị thông tin chi tiết trước khi khôi phục (URLs còn lại, đã xử lý, thời gian dừng)
+  - Giữ nguyên thời gian bắt đầu gốc để ETA calculation chính xác🐛 Bug Fixes
+- **⏱️ Fixed Paused Queue ETA Calculation:** Sửa lỗi hiển thị "0.0 URLs/min" khi tạm dừng queue
 - **🔍 Enhanced Error Detection:** Thêm phát hiện lỗi "URL not in property" và các lỗi GSC khác
 - **⏱️ Fixed ETA Calculation After Popup Reload:** Sửa lỗi hiển thị "0s (Infinity URLs/min)" khi đóng mở popup
 - **🔧 Fixed Queue Timing Issue:** Loại bỏ fixed 2s delay, giờ queue đợi hoàn tất URL hiện tại trước khi xử lý URL tiếp theo

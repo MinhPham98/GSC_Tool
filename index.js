@@ -52,6 +52,7 @@ const resumeQueueBtn = document.getElementById('resumeQueueBtn');
 const resumeStoppedBtn = document.getElementById('resumeStoppedBtn');
 const stopQueueBtn = document.getElementById('stopQueueBtn');
 const downloadQueueBtn = document.getElementById('downloadQueueBtn');
+const resetBtn = document.getElementById('resetBtn');
 const queueProgressFill = document.getElementById('queueProgressFill');
 const queueProgress = document.getElementById('queueProgress');
 const queueStatus = document.getElementById('queueStatus');
@@ -77,6 +78,9 @@ let isPaused = false;
 let sentPackCount = 0;
 let sentUrlCount = 0;
 let isFileInput = false;
+
+// ========== PACK MODE TIMEOUT TRACKING ==========
+let packTimeout = null;
 
 // ========== BACKGROUND QUEUE VARIABLES ==========
 let backgroundQueueActive = false;
@@ -330,6 +334,13 @@ startBtn.addEventListener("click", async function() {
 pauseBtn.addEventListener('click', function() {
   isPaused = !isPaused;
   chrome.storage.sync.set({ isPaused });
+  
+  // If pausing, clear any pending pack timeout
+  if (isPaused && packTimeout) {
+    clearTimeout(packTimeout);
+    packTimeout = null;
+  }
+  
   if (isPaused) {
     pauseBtn.textContent = 'Tiếp tục';
     pauseBtn.style.background = '#4caf50';
@@ -342,9 +353,26 @@ pauseBtn.addEventListener('click', function() {
 });
 
 /**
- * Sự kiện click nút Kết thúc: reset toàn bộ trạng thái, giao diện, dữ liệu
+ * Sự kiện click nút Kết thúc: dừng tất cả hoạt động và reset toàn bộ trạng thái
  */
 stopBtn.addEventListener('click', function() {
+  popupLog('UI', '🛑 Stop button clicked - stopping all operations');
+  
+  // Dừng tất cả các tiến trình background trước
+  chrome.runtime.sendMessage({ type: "STOP_BACKGROUND_QUEUE" });
+  chrome.runtime.sendMessage({ type: "STOP_AUTO_RUN" });
+  
+  // Clear any running intervals and timeouts
+  if (queueUpdateInterval) {
+    clearInterval(queueUpdateInterval);
+    queueUpdateInterval = null;
+  }
+  if (packTimeout) {
+    clearTimeout(packTimeout);
+    packTimeout = null;
+  }
+  
+  // Reset local state
   isFileInput = false;
   autoRun = false;
   isPaused = false;
@@ -352,6 +380,9 @@ stopBtn.addEventListener('click', function() {
   urlChunks = [];
   sentPackCount = 0;
   sentUrlCount = 0;
+  backgroundQueueActive = false;
+  
+  // Reset UI
   document.querySelector('.sent-pack').textContent = 0;
   document.querySelector('.sent-url').textContent = 0;
   startBtn.disabled = false;
@@ -363,6 +394,8 @@ stopBtn.addEventListener('click', function() {
   document.getElementById('links').value = '';
   document.getElementById('packInfo').textContent = 'Pack 1/1';
   resetInfoTableAndCache();
+  
+  // Update storage
   chrome.storage.sync.set({
     isPaused: false,
     isStopped: true,
@@ -373,9 +406,22 @@ stopBtn.addEventListener('click', function() {
     URLs: [],
     temporaryRemoval: true
   });
+  
+  // Clear inputs and messages
   document.getElementById('fileInput').value = '';
   document.getElementById('messages').textContent = '';
   document.getElementsByClassName('errors')[0].innerHTML = '';
+  
+  // Update queue UI if visible
+  updateQueueUI();
+  
+  showMessage('🛑 Đã dừng tất cả hoạt động', 'info');
+  popupLog('UI', '✅ All operations stopped and state reset');
+});
+
+resetBtn.addEventListener('click', function() {
+  popupLog('UI', '🔄 Reset button clicked');
+  resetAll();
 });
 
 // ===== Gửi pack =====
@@ -430,8 +476,11 @@ chrome.runtime.onMessage.addListener(async function(msg, sender, sendResponse) {
       notifyPackDoneAuto(); // Thêm dòng này
       currentPack++;
       updatePackDisplay();
-      setTimeout(async () => {
-        await clickStartBtn();
+      packTimeout = setTimeout(async () => {
+        // Double-check autoRun hasn't been stopped while timeout was waiting
+        if (autoRun && !isPaused) {
+          await clickStartBtn();
+        }
       }, 1000);
     } else {
       autoRun = false;
@@ -1082,26 +1131,41 @@ function updateQueueStatus(status) {
     
     // Calculate ETA from storage queueStartTime (async)
     const updateProgressWithETA = async () => {
-        if (queueProcessing && currentUrlIndex > 0) {
+        // Calculate ETA if queue is processing OR paused (but has made progress)
+        if ((queueProcessing || queuePaused) && currentUrlIndex > 0) {
             // Get queueStartTime from storage instead of window
             try {
                 const data = await new Promise((resolve) => {
-                    chrome.storage.local.get(['queueStartTime'], resolve);
+                    chrome.storage.local.get(['queueStartTime', 'queuePauseTime'], resolve);
                 });
                 
                 const queueStartTime = data.queueStartTime || Date.now();
+                const queuePauseTime = data.queuePauseTime || null;
                 const now = Date.now();
-                const elapsed = (now - queueStartTime) / 1000; // seconds
+                
+                // Calculate actual processing time (exclude pause time if paused)
+                let elapsed;
+                if (queuePaused && queuePauseTime) {
+                    // If currently paused, use time up to pause point
+                    elapsed = (queuePauseTime - queueStartTime) / 1000;
+                    popupLog('DEBUG', '⏸️ Queue paused - using pause time for calculation');
+                } else {
+                    // If processing or no pause time recorded, use current time
+                    elapsed = (now - queueStartTime) / 1000;
+                }
+                
                 const avgTimePerUrl = elapsed / currentUrlIndex;
                 const remainingUrls = totalUrls - currentUrlIndex;
                 const etaSeconds = remainingUrls * avgTimePerUrl;
                 
                 popupLog('DEBUG', '⏱️ ETA Calculation Debug:', {
                     queueStartTime: new Date(queueStartTime).toLocaleString(),
+                    queuePauseTime: queuePauseTime ? new Date(queuePauseTime).toLocaleString() : 'N/A',
                     now: new Date(now).toLocaleString(),
                     elapsed: `${elapsed.toFixed(1)}s`,
                     currentUrlIndex,
                     totalUrls,
+                    queuePaused,
                     avgTimePerUrl: `${avgTimePerUrl.toFixed(2)}s/URL`,
                     etaSeconds: `${etaSeconds.toFixed(1)}s`
                 });
@@ -1147,7 +1211,7 @@ function updateQueueStatus(status) {
     updateProgressWithETA();
     
     // Cập nhật trạng thái và controls
-    if (!backgroundMode || !queueProcessing) {
+    if (!backgroundMode || (!queueProcessing && !queuePaused)) {
         queueStatus.textContent = 'Hoàn thành';
         queueStatusDiv.className = 'queue-status queue-status--completed';
         pauseQueueBtn.classList.add('hidden');
@@ -1651,6 +1715,155 @@ resumeStoppedBtn.addEventListener('click', async function() {
     }
   });
 });
+
+/**
+ * Reset toàn bộ extension về trạng thái ban đầu
+ */
+async function resetAll() {
+    const confirmMessage = `🔄 RESET TOÀN BỘ EXTENSION
+    
+Thao tác này sẽ:
+• Dừng tất cả queue và pack đang chạy
+• Xóa toàn bộ kết quả (pack + queue)
+• Xóa URLs đã nhập
+• Reset về trạng thái ban đầu như lần đầu mở popup
+• Xóa tất cả cache và storage data
+
+⚠️ KHÔNG THỂ HOÀN TÁC!
+
+Bạn có chắc chắn muốn reset toàn bộ?`;
+
+    if (!confirm(confirmMessage)) {
+        return;
+    }
+    
+    popupLog('INFO', '🔄 Starting complete reset...');
+    
+    try {
+        // 1. Stop all background processes
+        popupLog('INFO', '⏹️ Stopping all background processes...');
+        chrome.runtime.sendMessage({ type: "STOP_BACKGROUND_QUEUE" });
+        chrome.runtime.sendMessage({ type: "STOP_AUTO_RUN" });
+        
+        // 2. Clear all intervals and timeouts
+        if (queueUpdateInterval) {
+            clearInterval(queueUpdateInterval);
+            queueUpdateInterval = null;
+        }
+        if (packTimeout) {
+            clearTimeout(packTimeout);
+            packTimeout = null;
+        }
+        
+        // 3. Reset all global variables
+        backgroundQueueActive = false;
+        
+        // 4. Clear all storage (both sync and local)
+        popupLog('INFO', '🧹 Clearing all storage data...');
+        
+        // Clear sync storage
+        await new Promise((resolve) => {
+            chrome.storage.sync.clear(() => {
+                popupLog('INFO', '✅ Sync storage cleared');
+                resolve();
+            });
+        });
+        
+        // Clear local storage  
+        await new Promise((resolve) => {
+            chrome.storage.local.clear(() => {
+                popupLog('INFO', '✅ Local storage cleared');
+                resolve();
+            });
+        });
+        
+        // 5. Reset UI to initial state
+        popupLog('INFO', '🎨 Resetting UI to initial state...');
+        
+        // Clear textarea
+        const linksTextarea = document.getElementById('links');
+        if (linksTextarea) {
+            linksTextarea.value = '';
+            linksTextarea.placeholder = 'Dán URLs vào đây (mỗi URL một dòng)';
+            linksTextarea.style.border = '';
+            linksTextarea.style.background = '';
+        }
+        
+        // Reset checkboxes to default
+        const downloadCheckbox = document.getElementById('downloadCheckbox');
+        const temporaryRemovalCheckbox = document.getElementById('temporaryRemoval');
+        const autoRunCheckbox = document.getElementById('autoRunCheckbox');
+        const backgroundModeCheckbox = document.getElementById('backgroundModeCheckbox');
+        
+        if (downloadCheckbox) downloadCheckbox.checked = false;
+        if (temporaryRemovalCheckbox) temporaryRemovalCheckbox.checked = false;
+        if (autoRunCheckbox) autoRunCheckbox.checked = false;
+        if (backgroundModeCheckbox) backgroundModeCheckbox.checked = false;
+        
+        // Reset chunk size to default
+        if (chunkSizeInput) chunkSizeInput.value = '10';
+        
+        // 6. Reset all UI elements visibility
+        updateQueueUI(); // This will reset to pack mode
+        
+        // Hide queue status
+        if (queueStatusDiv) queueStatusDiv.classList.add('hidden');
+        
+        // Show pack mode elements
+        if (startBtn) startBtn.classList.remove('hidden');
+        if (pauseBtn) pauseBtn.classList.remove('hidden');
+        if (stopBtn) stopBtn.classList.remove('hidden');
+        
+        // Hide download buttons
+        if (downloadQueueBtn) downloadQueueBtn.classList.add('hidden');
+        if (downloadBtn) downloadBtn.classList.remove('hidden');
+        
+        // Reset button states
+        if (pauseBtn) pauseBtn.textContent = 'Tạm dừng';
+        if (stopBtn) stopBtn.textContent = 'Kết thúc';
+        
+        // 7. Clear info tables
+        if (packInfoTable) {
+            packInfoTable.classList.remove('hidden');
+            // Reset pack info content
+            const packInfo = packInfoTable.querySelector('.info-table tbody');
+            if (packInfo) {
+                packInfo.innerHTML = `
+                    <tr><td>Tổng URL</td><td>0</td></tr>
+                    <tr><td>Thành công</td><td class="success">0</td></tr>
+                    <tr><td>Lỗi</td><td class="error">0</td></tr>
+                    <tr><td>Pack hiện tại</td><td>-</td></tr>
+                    <tr><td>Tổng pack</td><td>-</td></tr>
+                `;
+            }
+        }
+        
+        if (queueInfoTable) {
+            queueInfoTable.classList.add('hidden');
+        }
+        
+        // 8. Reset body classes
+        document.body.classList.remove('queue-mode-active');
+        
+        // 9. Reset any running timers or processes
+        popupLog('INFO', '⏲️ Clearing any remaining timers...');
+        
+        // 10. Show success message
+        popupLog('INFO', '✅ Complete reset finished successfully');
+        showMessage('🔄 Extension đã được reset hoàn toàn! Trạng thái như lần đầu mở popup.', 'success');
+        
+        // Optional: Reload popup for complete fresh start
+        setTimeout(() => {
+            if (confirm('Reset thành công! Bạn có muốn reload popup để đảm bảo hoàn toàn sạch?')) {
+                window.location.reload();
+            }
+        }, 1000);
+        
+    } catch (error) {
+        popupLog('ERROR', '❌ Error during reset:', error);
+        showMessage('❌ Có lỗi xảy ra khi reset. Vui lòng thử lại hoặc reload popup.', 'error');
+    }
+}
 
 
 
