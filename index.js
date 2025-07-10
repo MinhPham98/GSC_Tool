@@ -2,50 +2,20 @@
 // Main entry point for the popup interface
 // This file coordinates all popup modules and maintains backward compatibility
 
-// Initialize popup logging as soon as possible
-let popupStartTime = Date.now();
-let popupLogCounter = 0;
+// Note: popupLog and popupStartTime are now provided by popup-utils.js module
+// Access them via window.popupLog and window.popupStartTime
 
-// Hàm log cho popup với timestamp và counter
-function popupLog(level, message, ...args) {
-    popupLogCounter++;
-    const now = Date.now();
-    const uptime = Math.round((now - popupStartTime) / 1000);
-    const timestamp = new Date(now).toLocaleTimeString();
-    
-    const prefix = `[${timestamp}] [POPUP:${uptime}s] [${popupLogCounter}] [${level}]`;
-    
-    switch(level) {
-        case 'INFO':
-            console.log(`🔵 ${prefix}`, message, ...args);
-            break;
-        case 'WARN':
-            console.warn(`🟡 ${prefix}`, message, ...args);
-            break;
-        case 'ERROR':
-            console.error(`🔴 ${prefix}`, message, ...args);
-            break;
-        case 'DEBUG':
-            console.log(`🔧 ${prefix}`, message, ...args);
-            break;
-        case 'UI':
-            console.log(`🎨 ${prefix}`, message, ...args);
-            break;
-        default:
-            console.log(`⚪ ${prefix}`, message, ...args);
+console.log('🏗️ GSC Tool Popup - Main Entry Point Loading...');
+
+// Wait for popup-utils.js to load, then use its logging
+setTimeout(() => {
+    if (window.popupLog) {
+        window.popupLog('INFO', '🚀 GSC Tool Popup Main Entry Initialized (Modular)', {
+            url: window.location.href,
+            architecture: 'modular'
+        });
     }
-}
-
-// Log khởi động popup
-popupLog('INFO', '🚀 GSC Tool Popup Initialized (Modular)', {
-    startTime: new Date(popupStartTime).toLocaleString(),
-    url: window.location.href,
-    architecture: 'modular'
-});
-
-// Export popupLog globally for all modules to use
-window.popupLog = popupLog;
-window.popupStartTime = popupStartTime;
+}, 10);
 
 // ===== GLOBAL VARIABLES FOR BACKWARD COMPATIBILITY =====
 // These maintain compatibility with existing code while modules are loaded
@@ -138,7 +108,7 @@ if (downloadQueueBtn) {
 // This section ensures all modules are properly loaded and initialized
 
 document.addEventListener('DOMContentLoaded', () => {
-    popupLog('INFO', '📄 DOM loaded, waiting for modules to initialize...');
+    window.popupLog('INFO', '📄 DOM loaded, waiting for modules to initialize...');
     
     // Function to check module availability
     function checkModules() {
@@ -151,17 +121,27 @@ document.addEventListener('DOMContentLoaded', () => {
             popupCore: typeof PopupCore !== 'undefined'
         };
         
-        popupLog('DEBUG', '📊 Module loading status:', modulesLoaded);
+        window.popupLog('DEBUG', '📊 Module loading status:', modulesLoaded);
+        
+        // Additional debug info
+        window.popupLog('DEBUG', '🔍 Available window objects:', {
+            PopupUtils: !!window.PopupUtils,
+            UIComponents: !!window.UIComponents,
+            ProgressTracker: !!window.ProgressTracker,
+            QueueManager: !!window.QueueManager,
+            PackManager: !!window.PackManager,
+            PopupCore: !!window.PopupCore
+        });
         
         const allLoaded = Object.values(modulesLoaded).every(loaded => loaded);
         
         if (allLoaded) {
-            popupLog('INFO', '✅ All modules loaded successfully');
+            window.popupLog('INFO', '✅ All modules loaded successfully');
             
             // Initialize the popup core if not already done
             if (!window.popupCore && window.PopupCore) {
                 window.popupCore = new PopupCore();
-                popupLog('INFO', '🎯 PopupCore initialized from main entry');
+                window.popupLog('INFO', '🎯 PopupCore initialized from main entry');
             }
             return true;
         } else {
@@ -169,7 +149,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 .filter(([name, loaded]) => !loaded)
                 .map(([name]) => name);
             
-            popupLog('WARN', '⚠️ Missing modules:', missingModules);
+            window.popupLog('WARN', '⚠️ Missing modules:', missingModules);
             return false;
         }
     }
@@ -180,7 +160,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Retry after a longer delay
             setTimeout(() => {
                 if (!checkModules()) {
-                    popupLog('ERROR', '❌ Modules failed to load after retries, continuing with basic functionality');
+                    window.popupLog('ERROR', '❌ Modules failed to load after retries, continuing with basic functionality');
                 }
             }, 1000);
         }
@@ -208,7 +188,7 @@ window.splitIntoChunks = splitIntoChunks;
 // Global error handling for the popup
 
 window.addEventListener('error', (event) => {
-    popupLog('ERROR', '❌ Global popup error:', {
+    window.popupLog('ERROR', '❌ Global popup error:', {
         message: event.message,
         filename: event.filename,
         line: event.lineno,
@@ -218,9 +198,9 @@ window.addEventListener('error', (event) => {
 });
 
 window.addEventListener('unhandledrejection', (event) => {
-    popupLog('ERROR', '❌ Unhandled promise rejection:', {
+    window.popupLog('ERROR', '❌ Unhandled promise rejection:', {
         reason: event.reason
     });
 });
 
-popupLog('INFO', '🏗️ Popup main entry setup complete, modules loading...');
+console.log('🏗️ Popup main entry setup complete, modules loading...');

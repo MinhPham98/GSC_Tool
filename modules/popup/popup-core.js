@@ -347,3 +347,93 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Export for global access
 window.PopupCore = PopupCore;
+
+// ========== MODE SWITCHING FUNCTIONS ==========
+function switchToPackMode() {
+    window.popupLog('UI', '📦 Switching to Pack Mode');
+    
+    // Update UI state using UIComponents
+    if (window.UIComponents) {
+        window.UIComponents.state.setPackMode();
+    }
+    
+    // Hide queue-specific elements
+    const queueElements = [
+        '#queue-status', 
+        '#pauseQueueBtn', 
+        '#resumeQueueBtn', 
+        '#stopQueueBtn',
+        '#downloadQueueBtn',
+        '.queue-info-table-container'
+    ];
+    
+    queueElements.forEach(selector => {
+        const element = document.querySelector(selector);
+        if (element) {
+            element.classList.add('hidden');
+        }
+    });
+    
+    // Show pack-specific elements
+    const packElements = [
+        '#pack-controls',
+        '.info-table-container'
+    ];
+    
+    packElements.forEach(selector => {
+        const element = document.querySelector(selector);
+        if (element) {
+            element.classList.remove('hidden');
+        }
+    });
+    
+    // Remove queue mode class from body
+    document.body.classList.remove('queue-mode-active');
+    
+    window.popupLog('UI', '✅ Switched to Pack Mode successfully');
+}
+
+function switchToQueueMode() {
+    window.popupLog('UI', '🚀 Switching to Queue Mode');
+    
+    // Update UI state using UIComponents
+    if (window.UIComponents) {
+        window.UIComponents.state.setQueueMode();
+    }
+    
+    // Show queue-specific elements
+    const queueElements = [
+        '#queue-status',
+        '#pauseQueueBtn', 
+        '#resumeQueueBtn', 
+        '#stopQueueBtn',
+        '.queue-info-table-container'
+    ];
+    
+    queueElements.forEach(selector => {
+        const element = document.querySelector(selector);
+        if (element) {
+            element.classList.remove('hidden');
+        }
+    });
+    
+    // Hide pack-specific elements  
+    const packElements = [
+        '#pack-controls',
+        '.info-table-container'
+    ];
+    
+    packElements.forEach(selector => {
+        const element = document.querySelector(selector);
+        if (element) {
+            element.classList.add('hidden');
+        }
+    });
+    
+    // Add queue mode class to body
+    document.body.classList.add('queue-mode-active');
+    
+    window.popupLog('UI', '✅ Switched to Queue Mode successfully');
+}
+
+// ========== POPUP CORE CLASS ==========
