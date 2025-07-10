@@ -113,14 +113,16 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                 allUrls: urlQueue.length <= 20 ? urlQueue : [...urlQueue.slice(0, 10), '...', ...urlQueue.slice(-10)]
             });
             
-            // Lưu queue vào storage
+            // Lưu queue vào storage với queueStartTime để tính ETA chính xác
+            const queueStartTime = Date.now();
             await chrome.storage.local.set({
                 urlQueue: urlQueue,
                 currentUrlIndex: 0,
                 backgroundMode: true,
                 queueProcessing: true,
                 queuePaused: false,
-                targetTabId: targetTabId
+                targetTabId: targetTabId,
+                queueStartTime: queueStartTime // Save start time for ETA calculation
             });
             
             log('QUEUE', '� Queue state saved to storage');

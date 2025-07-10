@@ -557,6 +557,19 @@ document.getElementById('chunkSize').addEventListener('change', async function()
 document.addEventListener('DOMContentLoaded', async function() {
     console.log('🔄 Popup loaded, checking all states...');
     
+    // Debug: Check storage state including queueStartTime
+    chrome.storage.local.get(null, (allData) => {
+        popupLog('DEBUG', '💾 Full storage state on popup load:', allData);
+        if (allData.queueStartTime) {
+            const startTime = new Date(allData.queueStartTime);
+            const elapsed = (Date.now() - allData.queueStartTime) / 1000;
+            popupLog('INFO', '⏰ Queue timer info:', {
+                startTime: startTime.toLocaleString(),
+                elapsed: `${elapsed.toFixed(1)}s ago`
+            });
+        }
+    });
+    
     try {
         // 1. Kiểm tra queue status với timeout và retry
         const queueResponse = await checkQueueStatusWithRetry();
@@ -808,9 +821,6 @@ async function startBackgroundQueue(urls) {
         popupLog('INFO', '🔄 Setting backgroundQueueActive = true');
         backgroundQueueActive = true;
         
-        // Track queue start time for ETA calculation
-        window.queueStartTime = Date.now();
-        
         updateQueueUI();
         
         // Đợi một chút cho UI update xong
@@ -1015,7 +1025,7 @@ function startQueueStatusUpdates() {
 }
 
 /**
- * Cập nhật hiển thị trạng thái queue với ETA calculation
+ * Cập nhật hiển thị trạng thái queue với ETA calculation từ storage
  */
 function updateQueueStatus(status) {
     if (!status) {
@@ -1037,35 +1047,71 @@ function updateQueueStatus(status) {
         popupLog('ERROR', '❌ queueProgressFill element not found');
     }
     
-    // Calculate ETA and processing speed
-    let etaText = '';
-    if (queueProcessing && currentUrlIndex > 0) {
-        const queueStartTime = window.queueStartTime || Date.now();
-        const elapsed = (Date.now() - queueStartTime) / 1000; // seconds
-        const avgTimePerUrl = elapsed / currentUrlIndex;
-        const remainingUrls = totalUrls - currentUrlIndex;
-        const etaSeconds = remainingUrls * avgTimePerUrl;
-        
-        if (etaSeconds > 60) {
-            const etaMinutes = Math.round(etaSeconds / 60);
-            etaText = ` - ETA: ${etaMinutes}min`;
+    // Calculate ETA from storage queueStartTime (async)
+    const updateProgressWithETA = async () => {
+        if (queueProcessing && currentUrlIndex > 0) {
+            // Get queueStartTime from storage instead of window
+            try {
+                const data = await new Promise((resolve) => {
+                    chrome.storage.local.get(['queueStartTime'], resolve);
+                });
+                
+                const queueStartTime = data.queueStartTime || Date.now();
+                const now = Date.now();
+                const elapsed = (now - queueStartTime) / 1000; // seconds
+                const avgTimePerUrl = elapsed / currentUrlIndex;
+                const remainingUrls = totalUrls - currentUrlIndex;
+                const etaSeconds = remainingUrls * avgTimePerUrl;
+                
+                popupLog('DEBUG', '⏱️ ETA Calculation Debug:', {
+                    queueStartTime: new Date(queueStartTime).toLocaleString(),
+                    now: new Date(now).toLocaleString(),
+                    elapsed: `${elapsed.toFixed(1)}s`,
+                    currentUrlIndex,
+                    totalUrls,
+                    avgTimePerUrl: `${avgTimePerUrl.toFixed(2)}s/URL`,
+                    etaSeconds: `${etaSeconds.toFixed(1)}s`
+                });
+                
+                let etaDisplayText = '';
+                if (etaSeconds > 60) {
+                    const etaMinutes = Math.round(etaSeconds / 60);
+                    etaDisplayText = ` - ETA: ${etaMinutes}min`;
+                } else {
+                    etaDisplayText = ` - ETA: ${Math.round(etaSeconds)}s`;
+                }
+                
+                const speed = currentUrlIndex / (elapsed / 60); // URLs per minute
+                if (speed > 0 && isFinite(speed)) {
+                    etaDisplayText += ` (${speed.toFixed(1)} URLs/min)`;
+                    popupLog('DEBUG', '📈 Speed calculation:', `${speed.toFixed(1)} URLs/min`);
+                } else {
+                    popupLog('WARN', '⚠️ Invalid speed calculation:', { speed, elapsed, currentUrlIndex });
+                }
+                
+                // Update progress text with calculated ETA
+                if (queueProgress) {
+                    queueProgress.textContent = `${currentUrlIndex}/${totalUrls}${etaDisplayText}`;
+                    popupLog('DEBUG', '✅ Progress text updated with storage ETA:', queueProgress.textContent);
+                }
+            } catch (error) {
+                popupLog('ERROR', '❌ Failed to get queueStartTime from storage:', error);
+                // Fallback to basic progress
+                if (queueProgress) {
+                    queueProgress.textContent = `${currentUrlIndex}/${totalUrls}`;
+                }
+            }
         } else {
-            etaText = ` - ETA: ${Math.round(etaSeconds)}s`;
+            // Fallback for no processing or first URL
+            if (queueProgress) {
+                queueProgress.textContent = `${currentUrlIndex}/${totalUrls}`;
+                popupLog('DEBUG', '📊 Basic progress update (no ETA):', queueProgress.textContent);
+            }
         }
-        
-        const speed = currentUrlIndex / (elapsed / 60); // URLs per minute
-        if (speed > 0) {
-            etaText += ` (${speed.toFixed(1)} URLs/min)`;
-        }
-    }
+    };
     
-    // Cập nhật text hiển thị với ETA
-    if (queueProgress) {
-        queueProgress.textContent = `${currentUrlIndex}/${totalUrls}${etaText}`;
-        popupLog('DEBUG', '✅ Progress text updated:', queueProgress.textContent);
-    } else {
-        popupLog('ERROR', '❌ queueProgress element not found');
-    }
+    // Call the async function
+    updateProgressWithETA();
     
     // Cập nhật trạng thái và controls
     if (!backgroundMode || !queueProcessing) {
