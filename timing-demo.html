@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GSC Timing Analyzer Demo</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        button {
+            margin: 5px;
+            padding: 10px 15px;
+            background: #007cba;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #005a87;
+        }
+        .log {
+            background: #f5f5f5;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 3px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .status {
+            font-weight: bold;
+            padding: 5px 10px;
+            border-radius: 3px;
+        }
+        .status.recording {
+            background: #ffeb3b;
+            color: #333;
+        }
+        .status.stopped {
+            background: #f44336;
+            color: white;
+        }
+        .metrics {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 10px;
+            margin: 15px 0;
+        }
+        .metric {
+            background: #e3f2fd;
+            padding: 10px;
+            border-radius: 5px;
+            text-align: center;
+        }
+        .metric-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #1976d2;
+        }
+        .metric-label {
+            font-size: 12px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <h1>🕒 GSC Timing Analyzer Demo</h1>
+    
+    <div class="section">
+        <h3>Recording Controls</h3>
+        <span id="status" class="status stopped">⏹️ Stopped</span>
+        <div>
+            <button onclick="startRecording()">🔴 Start Recording</button>
+            <button onclick="stopRecording()">⏹️ Stop Recording</button>
+            <button onclick="clearLog()">🧹 Clear Log</button>
+        </div>
+    </div>
+
+    <div class="section">
+        <h3>Simulate Events</h3>
+        <button onclick="simulatePackProcessing()">📦 Simulate Pack Processing</button>
+        <button onclick="simulateUrlProcessing()">🔗 Simulate URL Processing</button>
+        <button onclick="simulateQueueProcessing()">🔄 Simulate Queue Processing</button>
+        <button onclick="simulateUserAction()">👆 Simulate User Action</button>
+        <button onclick="simulateError()">❌ Simulate Error</button>
+    </div>
+
+    <div class="section">
+        <h3>Analysis</h3>
+        <button onclick="showReport()">📊 Show Report</button>
+        <button onclick="downloadReport('json')">📥 Download JSON</button>
+        <button onclick="downloadReport('csv')">📥 Download CSV</button>
+        <button onclick="showMetrics()">📈 Show Metrics</button>
+    </div>
+
+    <div class="section">
+        <h3>Live Metrics</h3>
+        <div class="metrics">
+            <div class="metric">
+                <div class="metric-value" id="eventCount">0</div>
+                <div class="metric-label">Total Events</div>
+            </div>
+            <div class="metric">
+                <div class="metric-value" id="sessionCount">0</div>
+                <div class="metric-label">Active Sessions</div>
+            </div>
+            <div class="metric">
+                <div class="metric-value" id="duration">0s</div>
+                <div class="metric-label">Recording Duration</div>
+            </div>
+            <div class="metric">
+                <div class="metric-value" id="violations">0</div>
+                <div class="metric-label">Threshold Violations</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="section">
+        <h3>Console Log</h3>
+        <div id="log" class="log">Welcome to GSC Timing Analyzer Demo
+Click "Start Recording" to begin timing analysis...
+        </div>
+    </div>
+
+    <script src="timing-analyzer.js"></script>
+    <script>
+        let recordingInterval;
+        let sessionCounter = 0;
+
+        // Override console.log to show in our log div
+        const originalLog = console.log;
+        console.log = function(...args) {
+            originalLog.apply(console, args);
+            const logDiv = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            logDiv.textContent += `\n[${timestamp}] ${args.join(' ')}`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+        };
+
+        function startRecording() {
+            timingStart();
+            document.getElementById('status').textContent = '🔴 Recording';
+            document.getElementById('status').className = 'status recording';
+            
+            // Update metrics every second
+            recordingInterval = setInterval(updateMetrics, 1000);
+            updateMetrics();
+        }
+
+        function stopRecording() {
+            const report = timingStop();
+            document.getElementById('status').textContent = '⏹️ Stopped';
+            document.getElementById('status').className = 'status stopped';
+            
+            if (recordingInterval) {
+                clearInterval(recordingInterval);
+            }
+            
+            console.log('Recording stopped. Report generated.');
+            return report;
+        }
+
+        function clearLog() {
+            document.getElementById('log').textContent = 'Log cleared...\n';
+        }
+
+        function updateMetrics() {
+            if (!window.gscTiming || !window.gscTiming.isRecording) return;
+            
+            const analyzer = window.gscTiming;
+            const duration = Math.round((Date.now() - analyzer.startTime) / 1000);
+            const violations = analyzer.events.filter(e => e.type === 'THRESHOLD_EXCEEDED').length;
+            
+            document.getElementById('eventCount').textContent = analyzer.events.length;
+            document.getElementById('sessionCount').textContent = analyzer.sessions.size;
+            document.getElementById('duration').textContent = duration + 's';
+            document.getElementById('violations').textContent = violations;
+        }
+
+        function simulatePackProcessing() {
+            const packId = `pack-${++sessionCounter}`;
+            const urlCount = Math.floor(Math.random() * 20) + 5;
+            
+            timingSessionStart(packId, 'PACK_PROCESSING', `Processing pack ${sessionCounter}`, { urlCount });
+            
+            // Simulate random processing time
+            setTimeout(() => {
+                const success = Math.random() > 0.1; // 90% success rate
+                timingSessionEnd(packId, success ? 'completed' : 'error', { 
+                    successCount: success ? urlCount : Math.floor(urlCount * 0.7),
+                    errorCount: success ? 0 : Math.ceil(urlCount * 0.3)
+                });
+            }, Math.random() * 15000 + 2000); // 2-17 seconds
+        }
+
+        function simulateUrlProcessing() {
+            const urlId = `url-${++sessionCounter}`;
+            const url = `https://example.com/page-${sessionCounter}`;
+            
+            timingSessionStart(urlId, 'URL_PROCESSING', `Processing ${url}`, { url });
+            
+            // Simulate URL processing
+            setTimeout(() => {
+                const success = Math.random() > 0.15; // 85% success rate
+                timingSessionEnd(urlId, success ? 'success' : 'error', { 
+                    responseTime: Math.random() * 2000 + 500,
+                    errorMessage: success ? null : 'Simulated error'
+                });
+            }, Math.random() * 5000 + 1000); // 1-6 seconds
+        }
+
+        function simulateQueueProcessing() {
+            const urlCount = Math.floor(Math.random() * 50) + 10;
+            timingEvent('QUEUE_STARTED', `Started queue processing with ${urlCount} URLs`, { urlCount });
+            
+            // Simulate processing multiple URLs
+            for (let i = 0; i < Math.min(urlCount, 5); i++) {
+                setTimeout(() => {
+                    simulateUrlProcessing();
+                }, i * 2000);
+            }
+        }
+
+        function simulateUserAction() {
+            const actions = [
+                'BUTTON_CLICK',
+                'FORM_SUBMIT', 
+                'FILE_UPLOAD',
+                'CHECKBOX_TOGGLE',
+                'PACK_NAVIGATION'
+            ];
+            const action = actions[Math.floor(Math.random() * actions.length)];
+            
+            timingEvent(action, `User performed ${action.toLowerCase().replace('_', ' ')}`, {
+                userAgent: navigator.userAgent.substring(0, 50),
+                timestamp: Date.now()
+            });
+        }
+
+        function simulateError() {
+            const errors = [
+                'NETWORK_ERROR',
+                'PARSING_ERROR',
+                'VALIDATION_ERROR',
+                'TIMEOUT_ERROR',
+                'GSC_REJECT_ERROR'
+            ];
+            const error = errors[Math.floor(Math.random() * errors.length)];
+            
+            timingEvent(error, `Simulated error: ${error}`, {
+                errorCode: Math.floor(Math.random() * 500) + 400,
+                errorMessage: `Simulated ${error.toLowerCase()}`,
+                stack: 'Simulated stack trace...'
+            });
+        }
+
+        function showReport() {
+            const report = timingReport();
+            console.log('📊 Current Analysis Report:', JSON.stringify(report, null, 2));
+        }
+
+        function downloadReport(format) {
+            timingDownload(format);
+            console.log(`📥 Downloaded report in ${format.toUpperCase()} format`);
+        }
+
+        function showMetrics() {
+            const analyzer = window.gscTiming;
+            if (!analyzer.events.length) {
+                console.log('⚠️ No events recorded yet. Start recording and simulate some events first.');
+                return;
+            }
+            
+            const packStats = analyzer.analyzePackPerformance();
+            const queueStats = analyzer.analyzeQueuePerformance();
+            
+            console.log('📈 Performance Metrics:');
+            if (packStats) {
+                console.log('Pack Performance:', packStats);
+            }
+            if (queueStats) {
+                console.log('Queue Performance:', queueStats);
+            }
+        }
+
+        // Initialize metrics
+        updateMetrics();
+        
+        console.log('🎮 Demo loaded! Try the buttons above to simulate GSC Tool operations.');
+        console.log('💡 Tip: Open browser dev tools to see detailed logs.');
+    </script>
+</body>
+</html>

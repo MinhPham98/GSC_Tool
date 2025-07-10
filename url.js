@@ -5,6 +5,104 @@ if (typeof isPaused === 'undefined') var isPaused = false;
 if (typeof resumeRequested === 'undefined') var resumeRequested = false;
 if (typeof isStopped === 'undefined') var isStopped = false;
 
+// ========== TIMING ANALYZER INTEGRATION ==========
+// Tạo timing tracker đơn giản cho URL processing
+window.urlTimingTracker = {
+    sessions: new Map(),
+    currentSession: null,
+    firstStartTime: null,
+    
+    startSession(url, index, mode = 'pack') {
+        const sessionId = `${mode}_${index}_${Date.now()}`;
+        const session = {
+            sessionId,
+            url,
+            index,
+            mode,
+            startTime: Date.now(),
+            steps: []
+        };
+        
+        // Track first start time for total duration
+        if (!this.firstStartTime) {
+            this.firstStartTime = session.startTime;
+        }
+        
+        this.sessions.set(sessionId, session);
+        this.currentSession = session;
+        
+        console.log(`⏱️ [URL_START] ${sessionId} - ${url} (Index: ${index})`);
+        this.logStep('URL_START', { url, index, mode });
+        return sessionId;
+    },
+    
+    logStep(stepName, data = {}) {
+        if (!this.currentSession) return;
+        
+        const now = Date.now();
+        const step = {
+            name: stepName,
+            timestamp: now,
+            sessionTime: now - this.currentSession.startTime,
+            data
+        };
+        
+        this.currentSession.steps.push(step);
+        console.log(`⏱️ [${stepName}] +${step.sessionTime}ms - ${this.currentSession.url}`);
+    },
+    
+    endSession(status = 'success', reason = '') {
+        if (!this.currentSession) return;
+        
+        const endTime = Date.now();
+        const totalTime = endTime - this.currentSession.startTime;
+        
+        this.currentSession.status = status;
+        this.currentSession.reason = reason;
+        this.currentSession.endTime = endTime;
+        this.currentSession.totalTime = totalTime;
+        
+        console.log(`⏱️ [URL_END] ${this.currentSession.sessionId} - ${status} (${totalTime}ms) - ${reason}`);
+        this.logStep('URL_END', { status, reason, totalTime });
+        
+        // Log summary of steps
+        console.log(`📊 URL Processing Summary:`, {
+            url: this.currentSession.url,
+            index: this.currentSession.index,
+            totalTime: `${totalTime}ms`,
+            status,
+            reason,
+            steps: this.currentSession.steps.map(s => `${s.name}:${s.sessionTime}ms`).join(' → ')
+        });
+        
+        this.currentSession = null;
+    },
+    
+    getLastUrlTiming() {
+        const completed = Array.from(this.sessions.values()).filter(s => s.status);
+        return completed[completed.length - 1];
+    },
+    
+    analyzeAll() {
+        const completed = Array.from(this.sessions.values()).filter(s => s.status);
+        if (completed.length === 0) return null;
+        
+        const avgTime = completed.reduce((sum, s) => sum + s.totalTime, 0) / completed.length;
+        const successRate = completed.filter(s => s.status === 'success').length / completed.length;
+        
+        console.log(`📊 Timing Analysis: ${completed.length} URLs, Avg: ${avgTime.toFixed(0)}ms, Success: ${(successRate * 100).toFixed(1)}%`);
+        return { avgTime, successRate, total: completed.length };
+    }
+};
+
+// Shortcut functions
+window.timing = {
+    start: (url, index, mode) => window.urlTimingTracker.startSession(url, index, mode),
+    step: (stepName, data) => window.urlTimingTracker.logStep(stepName, data),
+    end: (status, reason) => window.urlTimingTracker.endSession(status, reason),
+    analyze: () => window.urlTimingTracker.analyzeAll()
+};
+
 // ========== Hàm log cải tiến ==========
 function log(level, message, ...args) {
     const timestamp = new Date().toLocaleTimeString();
@@ -236,16 +334,37 @@ async function checkOutcome(urlList, index, submitButtonFound) {
 async function removeUrlJs(index, urlList, nextButton = false, submitButtonFound = false) {
     if (isStopped) return;
     if (index < urlList.length) {
+        // 🕐 Start timing cho URL này
+        timing.start(urlList[index], index, 'pack');
+        
+        timing.step('CLICK_NEXT_BUTTON');
         await clickNextButton(nextButton, temporaryRemoval);
         await delay(1000);
+        
+        timing.step('FILL_URL_FORM');
         await urlToSubmissionBar(urlList, index, temporaryRemoval);
         await delay(1000);
+        
+        timing.step('CLICK_SUBMISSION_NEXT');
         await submissionNextButton();
         await delay(1000);
+        
+        timing.step('SUBMIT_REQUEST');
         submitButtonFound = await submitRequest(submitButtonFound);
         await delay(2000);
+        
+        timing.step('CHECK_OUTCOME');
         await checkOutcome(urlList, index, submitButtonFound);
         await delay(2000);
+        
+        // 🕐 End timing với kết quả từ resultLinks
+        const lastResult = resultLinks[resultLinks.length - 1];
+        if (lastResult) {
+            timing.end(lastResult.status, lastResult.reason);
+        } else {
+            timing.end('unknown', 'No result found');
+        }
+        
         // Cập nhật trạng thái vào storage
         chrome.storage.sync.set({
             running: true,
@@ -284,6 +403,17 @@ async function removeUrlJs(index, urlList, nextButton = false, submitButtonFound
                 urlSuccess: (cache.urlSuccess || 0) + successCount,
                 urlError: (cache.urlError || 0) + errorCount
             }, () => {
+                // 🕐 Analyze timing khi pack hoàn thành
+                const analysis = timing.analyze();
+                if (analysis) {
+                    console.log(`📊 PACK COMPLETED - Timing Analysis:`, {
+                        totalUrls: urlList.length,
+                        avgProcessingTime: `${analysis.avgTime.toFixed(0)}ms`,
+                        successRate: `${(analysis.successRate * 100).toFixed(1)}%`,
+                        totalTime: `${((Date.now() - urlTimingTracker.firstStartTime) / 1000).toFixed(1)}s`
+                    });
+                }
+                
                 chrome.runtime.sendMessage({ type: "PACK_DONE" });
                 // KHÔNG reload ở đây!
                 // Để popup quyết định chuyển pack và gửi tiếp nếu auto
@@ -371,6 +501,9 @@ if (location.pathname === "/search-console/removals") {
 
 // ========== BACKGROUND QUEUE PROCESSING ==========
 async function processSingleUrlFromQueue(url, queueIndex) {
+    // 🕐 Start timing cho queue URL
+    timing.start(url, queueIndex, 'queue');
+    
     const startTime = Date.now();
     // Create safe processing key using hash of URL + index
     const urlHash = btoa(url).replace(/[^a-zA-Z0-9]/g, '').substring(0, 20);
@@ -384,6 +517,7 @@ async function processSingleUrlFromQueue(url, queueIndex) {
             processingKey: processingKey,
             globalLockKey: globalLockKey
         });
+        timing.end('skipped', 'Already being processed');
         return;
     }
     
@@ -413,6 +547,7 @@ async function processSingleUrlFromQueue(url, queueIndex) {
         });
         delete window[processingKey];
         delete window[globalLockKey];
+        timing.end('skipped', 'Already in results');
         return;
     }
     
@@ -424,10 +559,12 @@ async function processSingleUrlFromQueue(url, queueIndex) {
     await delay(100);
     
     try {
-        // Thực hiện các bước xử lý URL với timing tối ưu
+        // 🕐 Timing steps cho queue processing
+        timing.step('QUEUE_CLICK_NEXT_BUTTON');
         await clickNextButton(false, temporaryRemoval);
         await delay(1500);
         
+        timing.step('QUEUE_FILL_URL_FORM');
         // Điền URL vào form
         const urlBarLabelIndex = temporaryRemoval ? 0 : 1;
         const urlBarLabel = document.querySelectorAll('.Ufn6O.PPB5Hf')[urlBarLabelIndex];
@@ -439,13 +576,16 @@ async function processSingleUrlFromQueue(url, queueIndex) {
             }
         }
         
+        timing.step('QUEUE_CLICK_SUBMISSION_NEXT');
         await delay(1500);
         await submissionNextButton();
         await delay(1500);
         
+        timing.step('QUEUE_SUBMIT_REQUEST');
         const submitButtonFound = await submitRequest(false);
         await delay(1500); // Reduced from 2000ms to 1500ms
         
+        timing.step('QUEUE_CHECK_OUTCOME');
         // Kiểm tra kết quả
         let reason = "", status = "";
         if (document.querySelectorAll('.PNenzf').length > 0) {
@@ -496,6 +636,9 @@ async function processSingleUrlFromQueue(url, queueIndex) {
                 log('DEBUG', `URL ${queueIndex + 1} - Success`);
             }
         }
+        
+        // 🕐 End timing với kết quả
+        timing.end(status, reason);
         
         // Adaptive delay: shorter for success, longer for errors
         const adaptiveDelay = status === "success" ? 1000 : 1500;
@@ -612,7 +755,7 @@ async function processSingleUrlFromQueue(url, queueIndex) {
             for (let k = 0; k < closeButton.length; k++) {
                 if ((closeButton[k].childNodes[0] && (closeButton[k].childNodes[0].textContent).toLowerCase() == 'close')) {
                     closeButton[k].click();
-                    await delay(1000); // Reduced from 1500ms to 1000ms for faster error handling
+                    await delay(1500); // Reduced from 1500ms to 1000ms for faster error handling
                     log('DEBUG', `Error popup closed for URL ${queueIndex + 1}`);
                 }
             }
@@ -627,6 +770,9 @@ async function processSingleUrlFromQueue(url, queueIndex) {
         });
         
     } catch (error) {
+        // 🕐 End timing với error
+        timing.end('error', `Processing error: ${error.message}`);
+        
         log('ERROR', `Error processing URL ${queueIndex + 1}:`, {
             url: url,
             error: error.message,
